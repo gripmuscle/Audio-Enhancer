@@ -1,8 +1,5 @@
 import streamlit as st
 from pydub import AudioSegment
-from pydub.playback import play
-import numpy as np
-from scipy.io import wavfile
 import tempfile
 from io import BytesIO
 import logging
@@ -35,19 +32,24 @@ st.title('AI Voice Enhancement Tool')
 # Upload Audio File
 uploaded_file = st.file_uploader("Upload your AI-generated audio file (wav, mp3 format)", type=["wav", "mp3"])
 if uploaded_file:
-    with tempfile.NamedTemporaryFile(delete=False, suffix=os.path.splitext(uploaded_file.name)[1]) as temp_file:
+    suffix = os.path.splitext(uploaded_file.name)[1]
+    with tempfile.NamedTemporaryFile(delete=False, suffix=suffix) as temp_file:
         temp_file.write(uploaded_file.read())
         audio_path = temp_file.name
 
     logger.info(f"Uploaded file saved to {audio_path}")
 
     # Load audio
-    if audio_path.endswith(".mp3"):
-        audio = AudioSegment.from_mp3(audio_path)
-    else:
-        audio = AudioSegment.from_wav(audio_path)
-    
-    st.audio(audio_path, format='audio/' + os.path.splitext(uploaded_file.name)[1][1:])
+    try:
+        if suffix == ".mp3":
+            audio = AudioSegment.from_mp3(audio_path)
+        else:
+            audio = AudioSegment.from_wav(audio_path)
+        st.audio(audio_path, format='audio/' + suffix[1:])
+    except Exception as e:
+        st.error(f"Failed to load audio file: {e}")
+        logger.error(f"Error loading audio file: {e}")
+        st.stop()
 
     st.subheader("Audio Enhancement Settings")
 
@@ -79,29 +81,28 @@ if uploaded_file:
     eq_freqs = st.session_state.presets[st.session_state.current_preset]
 
     # Audio Enhancement Settings
-    tempo = st.slider("Change Tempo (%)", -10, 10, 6)
-    speed = st.slider("Change Speed (%)", -10, 10, 5)
+    tempo = st.slider("Change Tempo (%)", -10, 10, 0)
+    speed = st.slider("Change Speed (%)", -10, 10, 0)
     compression_threshold = st.slider("Compression Threshold (-dB)", -40, 0, -20)
 
     if st.button("Apply Enhancements"):
         try:
             logger.info("Applying enhancements")
 
-            new_audio = audio._spawn(audio.raw_data, overrides={"frame_rate": int(audio.frame_rate * (1 + tempo / 100))})
-            new_audio = new_audio.set_frame_rate(audio.frame_rate)
-            new_audio = new_audio.speedup(playback_speed=1 + speed / 100)
+            # Adjust tempo
+            adjusted_audio = audio._spawn(audio.raw_data, overrides={"frame_rate": int(audio.frame_rate * (1 + tempo / 100))})
+            adjusted_audio = adjusted_audio.set_frame_rate(audio.frame_rate)
 
-            # Apply Equalizer
-            new_audio = new_audio.set_frame_rate(44100)
-            for freq, gain in eq_freqs.items():
-                new_audio = new_audio.equalizer(int(freq.split()[0]), gain)
-            
+            # Adjust speed
+            adjusted_audio = adjusted_audio.speedup(playback_speed=1 + speed / 100)
+
             # Apply Compression
-            new_audio = new_audio.compress_dynamic_range(compression_threshold)
+            if compression_threshold:
+                adjusted_audio = adjusted_audio.compress_dynamic_range(compression_threshold)
             
             # Save Enhanced Audio
             buffer = BytesIO()
-            new_audio.export(buffer, format="wav")
+            adjusted_audio.export(buffer, format="wav")
             buffer.seek(0)
 
             st.subheader("Preview Enhanced Audio")
