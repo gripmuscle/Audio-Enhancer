@@ -14,16 +14,16 @@ logger = logging.getLogger(__name__)
 if 'presets' not in st.session_state:
     st.session_state.presets = {
         "Master": {
-            "31.25 Hz": 0,
-            "62.5 Hz": 0,
+            "31.25 Hz": 2,
+            "62.5 Hz": 1,
             "125 Hz": -5,  # Reduce muddiness
             "250 Hz": -5,  # Reduce muddiness
-            "500 Hz": 0,
+            "500 Hz": 1,
             "1 kHz": 0,
-            "2 kHz": 0,
-            "4 kHz": 0,
-            "8 kHz": 0,
-            "16 kHz": 0,
+            "2 kHz": 2,
+            "4 kHz": 3,
+            "8 kHz": 2,
+            "16 kHz": 1,
         }
     }
     st.session_state.current_preset = "Master"
@@ -83,7 +83,7 @@ if uploaded_file:
 
     # Audio Enhancement Settings
     tempo = st.slider("Change Tempo (%)", -10, 10, 0)
-    speed = st.slider("Change Speed (%)", -10, 10, 0)
+    speed = st.slider("Change Speed (%)", -10, 10, 3)
     compression_threshold = st.slider("Compression Threshold (-dB)", -40, 0, -20)
     
     # Background Noise Reduction (simplified)
