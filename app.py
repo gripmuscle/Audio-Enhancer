@@ -88,19 +88,26 @@ if uploaded_file:
             if compression_threshold:
                 adjusted_audio = adjusted_audio.compress_dynamic_range(compression_threshold)
 
-            # Background Noise Reduction
+            # Convert audio to numpy array for processing
+            samples = np.array(adjusted_audio.get_array_of_samples())
+            fs = adjusted_audio.frame_rate
+
+            # Apply Background Noise Reduction
             if low_pass_cutoff:
-                # Convert audio to numpy array
-                samples = np.array(adjusted_audio.get_array_of_samples())
-                fs = adjusted_audio.frame_rate
                 # Apply low pass filter
                 b, a = signal.butter(4, low_pass_cutoff / (0.5 * fs), btype='low')
                 filtered_samples = signal.filtfilt(b, a, samples)
+                filtered_samples = np.clip(filtered_samples, -32768, 32767)  # Clip to int16 range
+
+                # Convert back to AudioSegment
                 adjusted_audio = adjusted_audio._spawn(filtered_samples.astype(np.int16).tobytes())
-            
+
             if noise_reduction_rate:
-                # Simplified noise reduction
-                adjusted_audio = adjusted_audio - noise_reduction_rate
+                # Apply simple noise reduction
+                samples = np.array(adjusted_audio.get_array_of_samples())
+                noise_reduced_samples = samples - noise_reduction_rate
+                noise_reduced_samples = np.clip(noise_reduced_samples, -32768, 32767)  # Clip to int16 range
+                adjusted_audio = adjusted_audio._spawn(noise_reduced_samples.astype(np.int16).tobytes())
 
             # Normalize audio
             normalized_audio = normalize(adjusted_audio)
