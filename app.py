@@ -56,16 +56,15 @@ if uploaded_file:
 
     st.subheader("Audio Enhancement Settings")
 
-    # Display and apply updated equalizer settings
+    # Display and apply updated equalizer settings with default values
     eq_freqs = st.session_state.presets[st.session_state.current_preset]
     st.write("Equalizer Settings:")
-    for freq, value in eq_freqs.items():
-        st.slider(f"{freq}", -12, 12, value, key=freq)
+    eq_settings = {freq: st.slider(f"{freq}", -12, 12, value, key=freq) for freq, value in eq_freqs.items()}
 
-    # Audio Enhancement Settings
-    tempo = st.slider("Change Tempo (%)", -10, 10, 0)
-    speed = st.slider("Change Speed (%)", -10, 10, 0)
-    compression_threshold = st.slider("Compression Threshold (-dB)", -40, 0, -20)
+    # Audio Enhancement Settings with default values
+    tempo = st.slider("Change Tempo (%)", -10, 10, 0, key="tempo")
+    speed = st.slider("Change Speed (%)", -10, 10, 3, key="speed")  # Default speed set to 3%
+    compression_threshold = st.slider("Compression Threshold (-dB)", -40, 0, -20, key="compression")  # Default compression set to -20 dB
 
     # Optimal Background Noise Reduction settings
     low_pass_cutoff = 10000  # 10 kHz
