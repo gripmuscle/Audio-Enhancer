@@ -61,6 +61,11 @@ if uploaded_file:
     st.write("Equalizer Settings:")
     eq_settings = {freq: st.slider(f"{freq}", -12, 12, value, key=freq) for freq, value in eq_freqs.items()}
 
+    # Display applied EQ settings
+    st.write("Applied Equalizer Settings:")
+    for freq, value in eq_settings.items():
+        st.write(f"{freq}: {value}")
+
     # Audio Enhancement Settings with default values
     tempo = st.slider("Change Tempo (%)", -10, 10, 0, key="tempo")
     speed = st.slider("Change Speed (%)", -10, 10, 3, key="speed")  # Default speed set to 3%
