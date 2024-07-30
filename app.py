@@ -1,5 +1,6 @@
 import streamlit as st
 from pydub import AudioSegment
+from pydub.effects import normalize
 import tempfile
 from io import BytesIO
 import logging
@@ -15,8 +16,8 @@ if 'presets' not in st.session_state:
         "Master": {
             "31.25 Hz": 0,
             "62.5 Hz": 0,
-            "125 Hz": 0,
-            "250 Hz": 0,
+            "125 Hz": -5,  # Reduce muddiness
+            "250 Hz": -5,  # Reduce muddiness
             "500 Hz": 0,
             "1 kHz": 0,
             "2 kHz": 0,
@@ -84,6 +85,9 @@ if uploaded_file:
     tempo = st.slider("Change Tempo (%)", -10, 10, 0)
     speed = st.slider("Change Speed (%)", -10, 10, 0)
     compression_threshold = st.slider("Compression Threshold (-dB)", -40, 0, -20)
+    
+    # Background Noise Reduction (simplified)
+    noise_reduction = st.slider("Background Noise Reduction (dB)", 0, 30, 10)
 
     if st.button("Apply Enhancements"):
         try:
@@ -100,9 +104,17 @@ if uploaded_file:
             if compression_threshold:
                 adjusted_audio = adjusted_audio.compress_dynamic_range(compression_threshold)
             
+            # Background Noise Reduction (simplified)
+            if noise_reduction:
+                # Assuming a basic approach to noise reduction by adjusting volume (actual noise reduction would require more sophisticated techniques)
+                adjusted_audio = adjusted_audio - noise_reduction
+
+            # Normalize audio
+            normalized_audio = normalize(adjusted_audio)
+            
             # Save Enhanced Audio
             buffer = BytesIO()
-            adjusted_audio.export(buffer, format="wav")
+            normalized_audio.export(buffer, format="wav")
             buffer.seek(0)
 
             st.subheader("Preview Enhanced Audio")
