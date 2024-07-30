@@ -56,15 +56,16 @@ if uploaded_file:
 
     st.subheader("Audio Enhancement Settings")
 
-    # Display and apply updated equalizer settings with default values
+    # Display and apply updated equalizer settings
     eq_freqs = st.session_state.presets[st.session_state.current_preset]
     st.write("Equalizer Settings:")
-    eq_settings = {freq: st.slider(f"{freq}", -12, 12, value, key=freq) for freq, value in eq_freqs.items()}
+    for freq, value in eq_freqs.items():
+        st.slider(f"{freq}", -12, 12, value, key=freq)
 
-    # Audio Enhancement Settings with default values
-    tempo = st.slider("Change Tempo (%)", -10, 10, 0, key="tempo")
-    speed = st.slider("Change Speed (%)", -10, 10, 3, key="speed")  # Default speed set to 3%
-    compression_threshold = st.slider("Compression Threshold (-dB)", -40, 0, -20, key="compression")  # Default compression set to -20 dB
+    # Audio Enhancement Settings
+    tempo = st.slider("Change Tempo (%)", -10, 10, 0)
+    speed = st.slider("Change Speed (%)", -10, 10, 0)
+    compression_threshold = st.slider("Compression Threshold (-dB)", -40, 0, -20)
 
     # Optimal Background Noise Reduction settings
     low_pass_cutoff = 10000  # 10 kHz
@@ -76,27 +77,9 @@ if uploaded_file:
         try:
             logger.info("Applying enhancements")
 
-            # Apply Equalizer - Simplified implementation
-            def apply_eq(audio_segment, eq_settings):
-                samples = np.array(audio_segment.get_array_of_samples())
-                fs = audio_segment.frame_rate
-
-                # Apply bandpass filters based on EQ settings
-                for freq, gain in eq_settings.items():
-                    freq = float(freq.split()[0])  # Extract frequency in Hz
-                    if freq > 0:  # Avoid zero frequencies
-                        # Bandpass filter design
-                        b, a = signal.butter(4, [freq / (0.5 * fs)], btype='band')
-                        samples = signal.lfilter(b, a, samples)
-
-                return audio_segment._spawn(samples.astype(np.int16).tobytes())
-
-            # Apply Equalizer to audio
-            adjusted_audio = apply_eq(audio, eq_settings)
-
             # Adjust tempo
-            adjusted_audio = adjusted_audio._spawn(adjusted_audio.raw_data, overrides={"frame_rate": int(adjusted_audio.frame_rate * (1 + tempo / 100))})
-            adjusted_audio = adjusted_audio.set_frame_rate(adjusted_audio.frame_rate)
+            adjusted_audio = audio._spawn(audio.raw_data, overrides={"frame_rate": int(audio.frame_rate * (1 + tempo / 100))})
+            adjusted_audio = adjusted_audio.set_frame_rate(audio.frame_rate)
 
             # Adjust speed
             adjusted_audio = adjusted_audio.speedup(playback_speed=1 + speed / 100)
@@ -107,13 +90,16 @@ if uploaded_file:
 
             # Background Noise Reduction
             if low_pass_cutoff:
+                # Convert audio to numpy array
                 samples = np.array(adjusted_audio.get_array_of_samples())
                 fs = adjusted_audio.frame_rate
+                # Apply low pass filter
                 b, a = signal.butter(4, low_pass_cutoff / (0.5 * fs), btype='low')
                 filtered_samples = signal.filtfilt(b, a, samples)
                 adjusted_audio = adjusted_audio._spawn(filtered_samples.astype(np.int16).tobytes())
             
             if noise_reduction_rate:
+                # Simplified noise reduction
                 adjusted_audio = adjusted_audio - noise_reduction_rate
 
             # Normalize audio
