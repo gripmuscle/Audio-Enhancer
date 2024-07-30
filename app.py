@@ -81,9 +81,25 @@ if uploaded_file:
         try:
             logger.info("Applying enhancements")
 
+            # Apply Equalizer - Basic implementation
+            def apply_eq(audio_segment, eq_settings):
+                samples = np.array(audio_segment.get_array_of_samples())
+                fs = audio_segment.frame_rate
+
+                for freq, gain in eq_settings.items():
+                    # Convert frequency to Hz
+                    freq = float(freq.split()[0])
+                    b, a = signal.butter(4, freq / (0.5 * fs), btype='band')
+                    samples = signal.lfilter(b, a, samples)
+
+                return audio_segment._spawn(samples.astype(np.int16).tobytes())
+
+            # Apply Equalizer to audio
+            adjusted_audio = apply_eq(audio, eq_settings)
+
             # Adjust tempo
-            adjusted_audio = audio._spawn(audio.raw_data, overrides={"frame_rate": int(audio.frame_rate * (1 + tempo / 100))})
-            adjusted_audio = adjusted_audio.set_frame_rate(audio.frame_rate)
+            adjusted_audio = adjusted_audio._spawn(adjusted_audio.raw_data, overrides={"frame_rate": int(adjusted_audio.frame_rate * (1 + tempo / 100))})
+            adjusted_audio = adjusted_audio.set_frame_rate(adjusted_audio.frame_rate)
 
             # Adjust speed
             adjusted_audio = adjusted_audio.speedup(playback_speed=1 + speed / 100)
