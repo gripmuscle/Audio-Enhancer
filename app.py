@@ -5,28 +5,28 @@ import tempfile
 from io import BytesIO
 import logging
 import os
+import numpy as np
+import scipy.signal as signal
+import noisereduce as nr
+from scipy.io import wavfile
 
 # Setup logging
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-# Initialize session state
-if 'presets' not in st.session_state:
-    st.session_state.presets = {
-        "Master": {
-            "31.25 Hz": 2,
-            "62.5 Hz": 1,
-            "125 Hz": -5,  # Reduce muddiness
-            "250 Hz": -5,  # Reduce muddiness
-            "500 Hz": 1,
-            "1 kHz": 0,
-            "2 kHz": 2,
-            "4 kHz": 3,
-            "8 kHz": 2,
-            "16 kHz": 1,
-        }
-    }
-    st.session_state.current_preset = "Master"
+# Initialize EQ settings
+default_eq = {
+    "31.25 Hz": 2,
+    "62.5 Hz": 1,
+    "125 Hz": -5,
+    "250 Hz": -5,
+    "500 Hz": 1,
+    "1 kHz": 0,
+    "2 kHz": 2,
+    "4 kHz": 3,
+    "8 kHz": 2,
+    "16 kHz": 1,
+}
 
 st.title('AI Voice Enhancement Tool')
 
@@ -54,39 +54,25 @@ if uploaded_file:
 
     st.subheader("Audio Enhancement Settings")
 
-    # Preset Management
-    preset_name = st.text_input("Preset Name", value=st.session_state.current_preset)
-    if st.button("Save Preset"):
-        preset_settings = {
-            "31.25 Hz": st.slider("31.25 Hz", -12, 12, st.session_state.presets[st.session_state.current_preset]["31.25 Hz"]),
-            "62.5 Hz": st.slider("62.5 Hz", -12, 12, st.session_state.presets[st.session_state.current_preset]["62.5 Hz"]),
-            "125 Hz": st.slider("125 Hz", -12, 12, st.session_state.presets[st.session_state.current_preset]["125 Hz"]),
-            "250 Hz": st.slider("250 Hz", -12, 12, st.session_state.presets[st.session_state.current_preset]["250 Hz"]),
-            "500 Hz": st.slider("500 Hz", -12, 12, st.session_state.presets[st.session_state.current_preset]["500 Hz"]),
-            "1 kHz": st.slider("1 kHz", -12, 12, st.session_state.presets[st.session_state.current_preset]["1 kHz"]),
-            "2 kHz": st.slider("2 kHz", -12, 12, st.session_state.presets[st.session_state.current_preset]["2 kHz"]),
-            "4 kHz": st.slider("4 kHz", -12, 12, st.session_state.presets[st.session_state.current_preset]["4 kHz"]),
-            "8 kHz": st.slider("8 kHz", -12, 12, st.session_state.presets[st.session_state.current_preset]["8 kHz"]),
-            "16 kHz": st.slider("16 kHz", -12, 12, st.session_state.presets[st.session_state.current_preset]["16 kHz"]),
-        }
-        st.session_state.presets[preset_name] = preset_settings
-        st.session_state.current_preset = preset_name
-        st.success(f"Preset '{preset_name}' saved!")
-        logger.info(f"Preset '{preset_name}' saved with settings: {preset_settings}")
-
-    st.subheader("Current Presets")
-    preset_options = list(st.session_state.presets.keys())
-    selected_preset = st.selectbox("Select Preset", options=preset_options)
-    st.session_state.current_preset = selected_preset
-
-    eq_freqs = st.session_state.presets[st.session_state.current_preset]
+    # EQ Sliders with default values
+    st.write("Equalizer Settings:")
+    eq_freqs = {
+        "31.25 Hz": st.slider("31.25 Hz", -12, 12, default_eq["31.25 Hz"]),
+        "62.5 Hz": st.slider("62.5 Hz", -12, 12, default_eq["62.5 Hz"]),
+        "125 Hz": st.slider("125 Hz", -12, 12, default_eq["125 Hz"]),
+        "250 Hz": st.slider("250 Hz", -12, 12, default_eq["250 Hz"]),
+        "500 Hz": st.slider("500 Hz", -12, 12, default_eq["500 Hz"]),
+        "1 kHz": st.slider("1 kHz", -12, 12, default_eq["1 kHz"]),
+        "2 kHz": st.slider("2 kHz", -12, 12, default_eq["2 kHz"]),
+        "4 kHz": st.slider("4 kHz", -12, 12, default_eq["4 kHz"]),
+        "8 kHz": st.slider("8 kHz", -12, 12, default_eq["8 kHz"]),
+        "16 kHz": st.slider("16 kHz", -12, 12, default_eq["16 kHz"]),
+    }
 
     # Audio Enhancement Settings
     tempo = st.slider("Change Tempo (%)", -10, 10, 0)
     speed = st.slider("Change Speed (%)", -10, 10, 3)
     compression_threshold = st.slider("Compression Threshold (-dB)", -40, 0, -20)
-    
-    # Background Noise Reduction (simplified)
     noise_reduction = st.slider("Background Noise Reduction (dB)", 0, 30, 10)
 
     if st.button("Apply Enhancements"):
@@ -104,10 +90,31 @@ if uploaded_file:
             if compression_threshold:
                 adjusted_audio = adjusted_audio.compress_dynamic_range(compression_threshold)
             
-            # Background Noise Reduction (simplified)
+            # Background Noise Reduction (using noisereduce)
             if noise_reduction:
-                # Assuming a basic approach to noise reduction by adjusting volume (actual noise reduction would require more sophisticated techniques)
-                adjusted_audio = adjusted_audio - noise_reduction
+                # Convert AudioSegment to numpy array
+                samples = np.array(adjusted_audio.get_array_of_samples())
+                # Apply noise reduction
+                reduced_noise = nr.reduce_noise(y=samples, sr=audio.frame_rate, prop_decrease=noise_reduction/30.0)
+                # Convert numpy array back to AudioSegment
+                reduced_audio = AudioSegment(
+                    data=reduced_noise.astype(np.int16).tobytes(),
+                    sample_width=adjusted_audio.sample_width,
+                    frame_rate=adjusted_audio.frame_rate,
+                    channels=adjusted_audio.channels
+                )
+                adjusted_audio = reduced_audio
+
+            # Apply EQ (simplified)
+            def apply_eq(audio, eq_settings):
+                samples = np.array(audio.get_array_of_samples())
+                for freq, gain in eq_settings.items():
+                    # Simplified EQ application
+                    b, a = signal.iirfilter(2, [float(freq[:-3]) * 2 / audio.frame_rate], btype='low')
+                    samples = signal.filtfilt(b, a, samples)
+                return audio._spawn(samples.tobytes())
+
+            adjusted_audio = apply_eq(adjusted_audio, eq_freqs)
 
             # Normalize audio
             normalized_audio = normalize(adjusted_audio)
