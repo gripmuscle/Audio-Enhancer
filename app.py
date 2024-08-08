@@ -155,7 +155,7 @@ if uploaded_files:
             merge_option = st.radio("Do you want to merge all files into one?", ("Yes", "No"), index=0)
             if merge_option == "Yes":
                 # Create a silent audio segment of 1 second
-                silence_segment = AudioSegment.silent(duration=1000)  # 1000 ms = 1 second
+                silence_segment = AudioSegment.silent(duration=500)  # 1000 ms = 1 second
                 final_audio = AudioSegment.empty()
 
                 # Add each audio and a silence segment in between
