@@ -1,5 +1,5 @@
 import streamlit as st
-from pydub import AudioSegment, silence
+from pydub import AudioSegment
 from pydub.effects import normalize
 import tempfile
 from io import BytesIO
@@ -65,19 +65,18 @@ if uploaded_files:
         non_silence_chunks = []
         start_time = None
         samples = np.array(audio.get_array_of_samples(), dtype=np.int16)  # Use a specific data type
-        sample_rate = audio.frame_rate
         silence_thresh_samples = 10 ** ((silence_thresh + 90) / 20)
 
         # Process in larger chunks
-        chunk_size = sample_rate // 10
+        chunk_size = audio.frame_rate // 10
         for i in range(0, len(samples), chunk_size):
             chunk = samples[i:i + chunk_size]
             if np.abs(chunk).mean() > silence_thresh_samples:
                 if start_time is None:
-                    start_time = i / sample_rate
+                    start_time = i / audio.frame_rate
             else:
-                if start_time is not None and (i / sample_rate - start_time) >= (min_silence_len / 1000):
-                    non_silence_chunks.append(audio[start_time * 1000:i / sample_rate * 1000])
+                if start_time is not None and (i / audio.frame_rate - start_time) >= (min_silence_len / 1000):
+                    non_silence_chunks.append(audio[start_time * 1000:i / audio.frame_rate * 1000])
                     start_time = None
 
         if start_time is not None:
@@ -90,8 +89,7 @@ if uploaded_files:
 
         return trimmed_audio
 
-    if apply_globally == "Yes":
-        eq_freqs, tempo, speed, compression_threshold, noise_reduction = render_settings()
+    eq_freqs, tempo, speed, compression_threshold, noise_reduction = (render_settings() if apply_globally == "Yes" else (None, 0, 0, None, 0))
 
     # Define a function for processing audio
     def process_audio(uploaded_file, eq_freqs, tempo, speed, compression_threshold, noise_reduction):
@@ -120,11 +118,11 @@ if uploaded_files:
             adjusted_audio = adjusted_audio.set_frame_rate(audio.frame_rate)
             adjusted_audio = adjusted_audio.speedup(playback_speed=1 + speed / 100)
 
-            if compression_threshold:
+            if compression_threshold is not None:
                 adjusted_audio = adjusted_audio.compress_dynamic_range(compression_threshold)
 
-            if noise_reduction:
-                samples = np.array(adjusted_audio.get_array_of_samples(), dtype=np.int16)  # Use specific data type for efficiency
+            if noise_reduction > 0:
+                samples = np.array(adjusted_audio.get_array_of_samples(), dtype=np.int16)
                 reduced_noise = nr.reduce_noise(y=samples, sr=audio.frame_rate, prop_decrease=noise_reduction / 30.0)
                 reduced_audio = AudioSegment(
                     data=reduced_noise.astype(np.int16).tobytes(),
@@ -144,21 +142,25 @@ if uploaded_files:
     # Handle audio processing
     if st.button("Apply Enhancements"):
         with ThreadPoolExecutor() as executor:
-            futures = {executor.submit(process_audio, uploaded_file, eq_freqs if apply_globally == "Yes" else render_settings()): uploaded_file for uploaded_file in uploaded_files}
+            futures = {executor.submit(process_audio, uploaded_file, eq_freqs if apply_globally == "Yes" else (None, 0, 0, None, 0)): uploaded_file for uploaded_file in uploaded_files}
 
             for future in as_completed(futures):
-                result = future.result()
-                if result:
-                    enhanced_audios.append(result)
-                else:
-                    st.error(f"An error occurred while processing {futures[future].name}")
+                uploaded_file = futures[future]  # Reference to the uploaded file
+                try:
+                    result = future.result()
+                    if result:
+                        enhanced_audios.append(result)
+                    else:
+                        st.error(f"An error occurred while processing {uploaded_file.name}")
+                except Exception as e:
+                    logger.error(f"Exception raised during processing of {uploaded_file.name}: {e}")
+                    st.error(f"An unexpected error occurred: {e}")
 
         # Handle export of enhanced audios
         if enhanced_audios:
             buffer = BytesIO()
             merge_option = st.radio("Do you want to merge all files into one?", ("Yes", "No"), index=0)
             if merge_option == "Yes":
-                # Create a silent audio segment of 1 second
                 silence_segment = AudioSegment.silent(duration=500)  # 500 ms = 0.5 seconds
                 final_audio = AudioSegment.empty()
 
