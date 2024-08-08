@@ -1,5 +1,6 @@
 streamlit
 pydub
+moviepy
 numpy
 scipy
 noisereduce
