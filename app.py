@@ -137,7 +137,6 @@ if uploaded_files and all(scripts_or_transcripts):
                     st.stop()
 
            # Calculate average dB level and set silence parameters
-try:
     samples = np.array(audio.get_array_of_samples())
     avg_dB = 20 * np.log10(np.sqrt(np.mean(samples ** 2)) / 32768)
     auto_silence_thresh = avg_dB - 10
