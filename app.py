@@ -1,5 +1,5 @@
 import streamlit as st
-from pydub import AudioSegment
+from pydub import AudioSegment, silence
 from pydub.effects import normalize
 import tempfile
 from io import BytesIO
@@ -8,7 +8,6 @@ import os
 import numpy as np
 import scipy.signal as signal
 import noisereduce as nr
-from scipy.io import wavfile
 
 # Setup logging
 logging.basicConfig(level=logging.INFO)
@@ -52,6 +51,17 @@ if uploaded_file:
         logger.error(f"Error loading audio file: {e}")
         st.stop()
 
+    # Calculate average dB level
+    def calculate_average_dB(audio):
+        # Convert audio to raw data and calculate dB
+        samples = np.array(audio.get_array_of_samples())
+        avg_dB = 20 * np.log10(np.sqrt(np.mean(samples ** 2)) / 32768)
+        return avg_dB
+
+    avg_dB = calculate_average_dB(audio)
+    auto_silence_thresh = avg_dB - 10  # Set silence threshold 10 dB below the average
+    min_silence_len = 800  # Minimum silence length in milliseconds
+
     st.subheader("Audio Enhancement Settings")
 
     # EQ Sliders with default values
@@ -75,6 +85,10 @@ if uploaded_file:
     compression_threshold = st.slider("Compression Threshold (-dB)", -40, 0, -20)
     noise_reduction = st.slider("Background Noise Reduction (dB)", 0, 30, 10)
 
+    # Silence Detection Settings (auto-calculated)
+    st.write(f"Auto-detected Silence Threshold: {auto_silence_thresh:.2f} dB")
+    st.write(f"Minimum Silence Length: {min_silence_len} ms")
+
     if st.button("Apply Enhancements"):
         try:
             logger.info("Applying enhancements")
@@ -89,7 +103,7 @@ if uploaded_file:
             # Apply Compression
             if compression_threshold:
                 adjusted_audio = adjusted_audio.compress_dynamic_range(compression_threshold)
-            
+
             # Background Noise Reduction (using noisereduce)
             if noise_reduction:
                 # Convert AudioSegment to numpy array
@@ -114,10 +128,25 @@ if uploaded_file:
                     samples = signal.filtfilt(b, a, samples)
                 return audio._spawn(samples.tobytes())
 
+            # Apply EQ with user-defined settings
             adjusted_audio = apply_eq(adjusted_audio, eq_freqs)
 
+            # Silence Detection and Removal
+            def remove_silence(audio, silence_thresh, min_silence_len, padding):
+                # Split the audio into non-silent segments
+                segments = silence.split_on_silence(audio, silence_thresh=silence_thresh, min_silence_len=min_silence_len)
+                # Add padding to keep a minimal gap between segments
+                trimmed_audio = AudioSegment.empty()
+                for segment in segments:
+                    trimmed_audio += segment
+                    trimmed_audio += AudioSegment.silent(duration=padding)
+                return trimmed_audio
+
+            # Apply silence removal
+            trimmed_audio = remove_silence(adjusted_audio, auto_silence_thresh, min_silence_len, padding=100)
+
             # Normalize audio
-            normalized_audio = normalize(adjusted_audio)
+            normalized_audio = normalize(trimmed_audio)
             
             # Save Enhanced Audio
             buffer = BytesIO()
