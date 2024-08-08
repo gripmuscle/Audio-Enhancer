@@ -6,7 +6,6 @@ from io import BytesIO
 import logging
 import os
 import numpy as np
-import scipy.signal as signal
 import noisereduce as nr
 import zipfile
 
@@ -42,24 +41,58 @@ if uploaded_files:
     # Choose whether to apply settings to all files or separately
     apply_globally = st.radio("Apply settings to all files?", ("Yes", "No"), index=0)
 
-    def render_settings(idx=0):
+    def render_settings():
         eq_freqs = {
-            "31.25 Hz": st.slider("31.25 Hz", -12, 12, default_eq["31.25 Hz"], key=f"31.25_Hz_{idx}"),
-            "62.5 Hz": st.slider("62.5 Hz", -12, 12, default_eq["62.5 Hz"], key=f"62.5_Hz_{idx}"),
-            "125 Hz": st.slider("125 Hz", -12, 12, default_eq["125 Hz"], key=f"125_Hz_{idx}"),
-            "250 Hz": st.slider("250 Hz", -12, 12, default_eq["250 Hz"], key=f"250_Hz_{idx}"),
-            "500 Hz": st.slider("500 Hz", -12, 12, default_eq["500 Hz"], key=f"500_Hz_{idx}"),
-            "1 kHz": st.slider("1 kHz", -12, 12, default_eq["1 kHz"], key=f"1_kHz_{idx}"),
-            "2 kHz": st.slider("2 kHz", -12, 12, default_eq["2 kHz"], key=f"2_kHz_{idx}"),
-            "4 kHz": st.slider("4 kHz", -12, 12, default_eq["4 kHz"], key=f"4_kHz_{idx}"),
-            "8 kHz": st.slider("8 kHz", -12, 12, default_eq["8 kHz"], key=f"8_kHz_{idx}"),
-            "16 kHz": st.slider("16 kHz", -12, 12, default_eq["16 kHz"], key=f"16_kHz_{idx}"),
+            "31.25 Hz": st.slider("31.25 Hz", -12, 12, default_eq["31.25 Hz"], key="31.25_Hz"),
+            "62.5 Hz": st.slider("62.5 Hz", -12, 12, default_eq["62.5 Hz"], key="62.5_Hz"),
+            "125 Hz": st.slider("125 Hz", -12, 12, default_eq["125 Hz"], key="125_Hz"),
+            "250 Hz": st.slider("250 Hz", -12, 12, default_eq["250 Hz"], key="250_Hz"),
+            "500 Hz": st.slider("500 Hz", -12, 12, default_eq["500 Hz"], key="500_Hz"),
+            "1 kHz": st.slider("1 kHz", -12, 12, default_eq["1 kHz"], key="1_kHz"),
+            "2 kHz": st.slider("2 kHz", -12, 12, default_eq["2 kHz"], key="2_kHz"),
+            "4 kHz": st.slider("4 kHz", -12, 12, default_eq["4 kHz"], key="4_kHz"),
+            "8 kHz": st.slider("8 kHz", -12, 12, default_eq["8 kHz"], key="8_kHz"),
+            "16 kHz": st.slider("16 kHz", -12, 12, default_eq["16 kHz"], key="16_kHz"),
         }
-        tempo = st.slider("Change Tempo (%)", -10, 10, 0, key=f"tempo_{idx}")
-        speed = st.slider("Change Speed (%)", -10, 10, 3, key=f"speed_{idx}")
-        compression_threshold = st.slider("Compression Threshold (-dB)", -40, 0, -20, key=f"compression_{idx}")
-        noise_reduction = st.slider("Background Noise Reduction (dB)", 0, 30, 10, key=f"noise_reduction_{idx}")
+        tempo = st.slider("Change Tempo (%)", -10, 10, 0, key="tempo")
+        speed = st.slider("Change Speed (%)", -10, 10, 3, key="speed")
+        compression_threshold = st.slider("Compression Threshold (-dB)", -40, 0, -20, key="compression")
+        noise_reduction = st.slider("Background Noise Reduction (dB)", 0, 30, 10, key="noise_reduction")
         return eq_freqs, tempo, speed, compression_threshold, noise_reduction
+
+    def remove_silence(audio, silence_thresh, min_silence_len):
+        # Detect non-silent chunks based on the threshold
+        non_silence_chunks = []
+        start_time = None
+
+        # Get samples and the frame rate for precise detection
+        samples = np.array(audio.get_array_of_samples())
+        sample_rate = audio.frame_rate
+        
+        # Calculate the silence threshold in terms of samples
+        silence_thresh_samples = 10 ** ((silence_thresh + 90) / 20)  # Convert dBFS to amplitude
+
+        for i in range(0, len(samples), sample_rate // 10):  # Check every 100ms
+            chunk = samples[i:i + sample_rate // 10]
+            if np.abs(chunk).mean() > silence_thresh_samples:  # Non-silent
+                if start_time is None:
+                    start_time = i / sample_rate
+            else:  # Silent
+                if start_time is not None and (i / sample_rate - start_time) >= (min_silence_len / 1000):
+                    non_silence_chunks.append(audio[start_time * 1000:i / sample_rate * 1000])
+                    start_time = None
+
+        # Add the last chunk if it ends with non-silence
+        if start_time is not None:
+            non_silence_chunks.append(audio[start_time * 1000:])
+
+        # Concatenate all non-silent chunks without padding
+        if non_silence_chunks:
+            trimmed_audio = sum(non_silence_chunks)
+        else:
+            return audio  # Return original audio if no non-silent segments found
+
+        return trimmed_audio
 
     for idx, uploaded_file in enumerate(uploaded_files):
         suffix = os.path.splitext(uploaded_file.name)[1]
@@ -71,25 +104,12 @@ if uploaded_files:
 
         # Load audio
         try:
-            if suffix == ".mp3":
-                audio = AudioSegment.from_mp3(audio_path)
-            else:
-                audio = AudioSegment.from_wav(audio_path)
+            audio = AudioSegment.from_file(audio_path)
             st.audio(audio_path, format='audio/' + suffix[1:])
         except Exception as e:
             st.error(f"Failed to load audio file: {e}")
             logger.error(f"Error loading audio file: {e}")
             st.stop()
-
-        # Calculate average dB level
-        def calculate_average_dB(audio):
-            samples = np.array(audio.get_array_of_samples())
-            avg_dB = 20 * np.log10(np.sqrt(np.mean(samples ** 2)) / 32768)
-            return avg_dB
-
-        avg_dB = calculate_average_dB(audio)
-        auto_silence_thresh = avg_dB - 10
-        min_silence_len = 800
 
         st.subheader(f"Audio Enhancement Settings for {uploaded_file.name}")
 
@@ -97,64 +117,44 @@ if uploaded_files:
             if idx == 0:
                 eq_freqs, tempo, speed, compression_threshold, noise_reduction = render_settings()
         else:
-            eq_freqs, tempo, speed, compression_threshold, noise_reduction = render_settings(idx)
+            eq_freqs, tempo, speed, compression_threshold, noise_reduction = render_settings()
 
-        st.write(f"Auto-detected Silence Threshold: {auto_silence_thresh:.2f} dB")
-        st.write(f"Minimum Silence Length: {min_silence_len} ms")
+        # Default silence threshold for the removal process
+        silence_thresh = -50  # You can adjust this value as needed
+        min_silence_len = 800  # Minimum silence length in milliseconds
 
-        if st.button(f"Apply Enhancements to {uploaded_file.name}", key=f"apply_{idx}"):
-            try:
-                logger.info("Applying enhancements")
+    if apply_globally == "Yes":
+        if st.button("Apply Enhancements to All Files"):
+            for uploaded_file in uploaded_files:
+                try:
+                    adjusted_audio = audio._spawn(audio.raw_data, overrides={"frame_rate": int(audio.frame_rate * (1 + tempo / 100))})
+                    adjusted_audio = adjusted_audio.set_frame_rate(audio.frame_rate)
+                    adjusted_audio = adjusted_audio.speedup(playback_speed=1 + speed / 100)
 
-                adjusted_audio = audio._spawn(audio.raw_data, overrides={"frame_rate": int(audio.frame_rate * (1 + tempo / 100))})
-                adjusted_audio = adjusted_audio.set_frame_rate(audio.frame_rate)
+                    if compression_threshold:
+                        adjusted_audio = adjusted_audio.compress_dynamic_range(compression_threshold)
 
-                adjusted_audio = adjusted_audio.speedup(playback_speed=1 + speed / 100)
+                    if noise_reduction:
+                        samples = np.array(adjusted_audio.get_array_of_samples())
+                        reduced_noise = nr.reduce_noise(y=samples, sr=audio.frame_rate, prop_decrease=noise_reduction / 30.0)
+                        reduced_audio = AudioSegment(
+                            data=reduced_noise.astype(np.int16).tobytes(),
+                            sample_width=adjusted_audio.sample_width,
+                            frame_rate=adjusted_audio.frame_rate,
+                            channels=adjusted_audio.channels
+                        )
+                        adjusted_audio = reduced_audio
 
-                if compression_threshold:
-                    adjusted_audio = adjusted_audio.compress_dynamic_range(compression_threshold)
+                    trimmed_audio = remove_silence(adjusted_audio, silence_thresh, min_silence_len)
+                    normalized_audio = normalize(trimmed_audio)
+                    enhanced_audios.append(normalized_audio)
+                except Exception as e:
+                    st.error(f"An error occurred while processing {uploaded_file.name}: {e}")
+                    logger.error(f"Error applying enhancements: {e}")
 
-                if noise_reduction:
-                    samples = np.array(adjusted_audio.get_array_of_samples())
-                    reduced_noise = nr.reduce_noise(y=samples, sr=audio.frame_rate, prop_decrease=noise_reduction / 30.0)
-                    reduced_audio = AudioSegment(
-                        data=reduced_noise.astype(np.int16).tobytes(),
-                        sample_width=adjusted_audio.sample_width,
-                        frame_rate=adjusted_audio.frame_rate,
-                        channels=adjusted_audio.channels
-                    )
-                    adjusted_audio = reduced_audio
-
-                def apply_eq(audio, eq_settings):
-                    samples = np.array(audio.get_array_of_samples())
-                    for freq, gain in eq_settings.items():
-                        b, a = signal.iirfilter(2, [float(freq[:-3]) * 2 / audio.frame_rate], btype='low')
-                        samples = signal.filtfilt(b, a, samples)
-                    return audio._spawn(samples.tobytes())
-
-                adjusted_audio = apply_eq(adjusted_audio, eq_freqs)
-
-                def remove_silence(audio, silence_thresh, min_silence_len, padding):
-                    segments = silence.split_on_silence(audio, silence_thresh=silence_thresh, min_silence_len=min_silence_len)
-                    if not segments:
-                        return audio  # Return original audio if no non-silent segments found
-                    trimmed_audio = segments[0]
-                    for segment in segments[1:]:
-                        trimmed_audio += AudioSegment.silent(duration=padding) + segment
-                    return trimmed_audio
-
-                trimmed_audio = remove_silence(adjusted_audio, auto_silence_thresh, min_silence_len, padding=100)
-
-                normalized_audio = normalize(trimmed_audio)
-                enhanced_audios.append(normalized_audio)
-            
-            except Exception as e:
-                st.error(f"An error occurred: {e}")
-                logger.error(f"Error applying enhancements: {e}")
-
+    # Handle export of enhanced audios
     if enhanced_audios:
         buffer = BytesIO()
-
         if len(enhanced_audios) > 1:
             st.write("Do you want to merge all files into one?")
             merge_option = st.radio("", ("Yes", "No"), index=1, key="merge_option")
