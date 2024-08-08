@@ -148,6 +148,35 @@ if st.button("Apply Enhancements"):
     total_files = len(uploaded_files)
 
     with ThreadPoolExecutor() as executor:
+        futures = {}
+        
+        for uploaded_file in uploaded_files:
+            if apply_globally == "Yes":
+                # Use eq_freqs, tempo, speed, compression_threshold, noise_reduction
+                params = (uploaded_file, eq_freqs, tempo, speed, compression_threshold, noise_reduction)
+            else:
+                # Use render_settings() to get individual settings for each file
+                eq_freqs, tempo, speed, compression_threshold, noise_reduction = render_settings()
+                params = (uploaded_file, eq_freqs, tempo, speed, compression_threshold, noise_reduction)
+            
+            futures[executor.submit(process_audio, *params)] = uploaded_file  # Submit job
+
+        for i, future in enumerate(as_completed(futures)):
+            result = future.result()
+            progress_text.text(f"Processing {i + 1} of {total_files} files...")  # Update progress text
+
+            if result:
+                enhanced_audios.append(result)
+            else:
+                st.error(f"An error occurred while processing {futures[future].name}")
+
+            # Update progress bar after processing each file
+            progress_bar.progress((i + 1) / total_files)
+
+    progress_text.text("Processing complete!")  # Ensure this line is aligned with the for loop
+
+
+    with ThreadPoolExecutor() as executor:
         futures = {
             executor.submit(process_audio, uploaded_file, *(
                 eq_freqs if apply_globally == "Yes" else render_settings())
