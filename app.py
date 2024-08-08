@@ -1,5 +1,5 @@
 import streamlit as st
-from pydub import AudioSegment, silence
+from pydub import AudioSegment
 from pydub.effects import normalize
 import tempfile
 from io import BytesIO
@@ -154,8 +154,6 @@ if uploaded_files:
 
             for i, future in enumerate(as_completed(futures)):
                 result = future.result()
-                progress_percentage = (i + 1) / total_files
-                progress_bar.progress(progress_percentage)  # Update progress bar
                 progress_text.text(f"Processing {i + 1} of {total_files} files...")  # Update progress text
 
                 if result:
@@ -163,7 +161,9 @@ if uploaded_files:
                 else:
                     st.error(f"An error occurred while processing {futures[future].name}")
 
-        progress_bar.empty()  # Clear progress bar
+                # Update progress bar after processing each file
+                progress_bar.progress((i + 1) / total_files)
+
         progress_text.text("Processing complete!")
 
         # Handle export of enhanced audios
