@@ -142,27 +142,32 @@ if uploaded_files:
             return None
 
     # Handle audio processing
-    if st.button("Apply Enhancements"):
-        progress_bar = st.progress(0)  # Initialize progress bar
-        progress_text = st.empty()  # Placeholder for progress text
-        total_files = len(uploaded_files)
+if st.button("Apply Enhancements"):
+    progress_bar = st.progress(0)  # Initialize progress bar
+    progress_text = st.empty()  # Placeholder for progress text
+    total_files = len(uploaded_files)
 
-        with ThreadPoolExecutor() as executor:
-            futures = {
-                executor.submit(process_audio, uploaded_file, eq_freqs if apply_globally == "Yes" else render_settings()): uploaded_file for uploaded_file in uploaded_files
-            }
+    with ThreadPoolExecutor() as executor:
+        futures = {
+            executor.submit(process_audio, uploaded_file, *(
+                eq_freqs if apply_globally == "Yes" else render_settings())
+            ): uploaded_file for uploaded_file in uploaded_files
+        }
 
-            for i, future in enumerate(as_completed(futures)):
-                result = future.result()
-                progress_text.text(f"Processing {i + 1} of {total_files} files...")  # Update progress text
+        for i, future in enumerate(as_completed(futures)):
+            result = future.result()
+            progress_text.text(f"Processing {i + 1} of {total_files} files...")  # Update progress text
 
-                if result:
-                    enhanced_audios.append(result)
-                else:
-                    st.error(f"An error occurred while processing {futures[future].name}")
+            if result:
+                enhanced_audios.append(result)
+            else:
+                st.error(f"An error occurred while processing {futures[future].name}")
 
-                # Update progress bar after processing each file
-                progress_bar.progress((i + 1) / total_files)
+            # Update progress bar after processing each file
+            progress_bar.progress((i + 1) / total_files)
+
+    progress_text.text("Processing complete!")
+
 
         progress_text.text("Processing complete!")
 
