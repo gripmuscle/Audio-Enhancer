@@ -112,7 +112,7 @@ if uploaded_files:
             # Calculate average dB level and set silence parameters
             avg_dB = 20 * np.log10(np.sqrt(np.mean(np.array(audio.get_array_of_samples()) ** 2)) / 32768)
             auto_silence_thresh = avg_dB - 10
-            min_silence_len = 800
+            min_silence_len = 1000
 
             # Apply enhancements
             try:
