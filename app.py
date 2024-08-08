@@ -141,89 +141,66 @@ if uploaded_files:
             logger.error(f"Error applying enhancements: {e}")
             return None
 
-   # Handle audio processing
-if st.button("Apply Enhancements"):
-    progress_bar = st.progress(0)  # Initialize progress bar
-    progress_text = st.empty()  # Placeholder for progress text
-    total_files = len(uploaded_files)
+    # Handle audio processing
+    if st.button("Apply Enhancements"):
+        progress_bar = st.progress(0)  # Initialize progress bar
+        progress_text = st.empty()  # Placeholder for progress text
+        total_files = len(uploaded_files)
 
-    with ThreadPoolExecutor() as executor:
-        futures = {}
-        
-        for uploaded_file in uploaded_files:
-            if apply_globally == "Yes":
-                # Use eq_freqs, tempo, speed, compression_threshold, noise_reduction
-                params = (uploaded_file, eq_freqs, tempo, speed, compression_threshold, noise_reduction)
-            else:
-                # Use render_settings() to get individual settings for each file
-                eq_freqs, tempo, speed, compression_threshold, noise_reduction = render_settings()
-                params = (uploaded_file, eq_freqs, tempo, speed, compression_threshold, noise_reduction)
-            
-            futures[executor.submit(process_audio, *params)] = uploaded_file  # Submit job
+        with ThreadPoolExecutor() as executor:
+            futures = {
+                executor.submit(process_audio, uploaded_file, 
+                    *(eq_freqs if apply_globally == "Yes" else render_settings())): uploaded_file 
+                for uploaded_file in uploaded_files
+            }
 
-        for i, future in enumerate(as_completed(futures)):
-            result = future.result()
-            progress_text.text(f"Processing {i + 1} of {total_files} files...")  # Update progress text
+            for i, future in enumerate(as_completed(futures)):
+                result = future.result()
+                progress_text.text(f"Processing {i + 1} of {total_files} files...")  # Update progress text
 
-            if result:
-                enhanced_audios.append(result)
-            else:
-                st.error(f"An error occurred while processing {futures[future].name}")
+                if result:
+                    enhanced_audios.append(result)
+                else:
+                    st.error(f"An error occurred while processing {futures[future].name}")
 
-            # Update progress bar after processing each file
-            progress_bar.progress((i + 1) / total_files)
-
-    progress_text.text("Processing complete!")  # Ensure this line is aligned with the for loop
-
-
-    with ThreadPoolExecutor() as executor:
-        futures = {
-            executor.submit(process_audio, uploaded_file, *(
-                eq_freqs if apply_globally == "Yes" else render_settings())
-            ): uploaded_file for uploaded_file in uploaded_files
-        }
-
-        for i, future in enumerate(as_completed(futures)):
-            result = future.result()
-            progress_text.text(f"Processing {i + 1} of {total_files} files...")  # Update progress text
-
-            if result:
-                enhanced_audios.append(result)
-            else:
-                st.error(f"An error occurred while processing {futures[future].name}")
-
-            # Update progress bar after processing each file
-            progress_bar.progress((i + 1) / total_files)
+                # Update progress bar after processing each file
+                progress_bar.progress((i + 1) / total_files)
 
             progress_text.text("Processing complete!")  # Ensure this line is aligned with the for loop
 
-        # Handle export of enhanced audios
-        if enhanced_audios:
-            buffer = BytesIO()
-            merge_option = st.radio("Do you want to merge all files into one?", ("Yes", "No"), index=0)
-            if merge_option == "Yes":
-                # Create a silent audio segment of 1 second
-                silence_segment = AudioSegment.silent(duration=500)  # 500 ms = 0.5 seconds
-                final_audio = AudioSegment.empty()
+            # Handle export of enhanced audios
+            if enhanced_audios:
+                buffer = BytesIO()
+                merge_option = st.radio("Do you want to merge all files into one?", ("Yes", "No"), index=0)
+                if merge_option == "Yes":
+                    # Create a silent audio segment of 1 second
+                    silence_segment = AudioSegment.silent(duration=500)  # 500 ms = 0.5 seconds
+                    final_audio = AudioSegment.empty()
 
-                # Add each audio and a silence segment in between
-                for audio in enhanced_audios:
-                    final_audio += audio + silence_segment
+                    # Add each audio and a silence segment in between
+                    for audio in enhanced_audios:
+                        final_audio += audio + silence_segment
 
-                # Remove the last silence added
-                final_audio = final_audio[:-len(silence_segment)]
+                    # Remove the last silence added
+                    final_audio = final_audio[:-len(silence_segment)]
 
-                final_audio.export(buffer, format="wav")
-                buffer.seek(0)
-                st.subheader("Merged Enhanced Audio")
-                st.audio(buffer, format="audio/wav")
-                st.download_button(label="Download Merged Enhanced Audio", data=buffer, file_name=f"{output_file_name}.wav")
-            else:
-                with zipfile.ZipFile(buffer, "w") as zip_file:
-                    for i, audio in enumerate(enhanced_audios):
-                        audio_buffer = BytesIO()
-                        audio.export(audio_buffer, format="wav")
-                        audio_buffer.seek(0)
-                        zip_file.writestr(f"{output_file_name}_{i + 1}.wav", audio_buffer.read())
-                buffer.seek(0)
-                st.download_button(label="Download Enhanced Audio Files (ZIP)", data=buffer, file_name=f"{output_file_name}.zip")
+                    final_audio.export(buffer, format="wav")
+                    buffer.seek(0)
+                    st.subheader("Merged Enhanced Audio")
+                    st.audio(buffer, format="audio/wav")
+                    st.download_button(label="Download Merged Enhanced Audio", data=buffer, file_name=f"{output_file_name}.wav", mime="audio/wav")
+                else:
+                    # Prepare zip file for individual downloads
+                    zip_buffer = BytesIO()
+                    with zipfile.ZipFile(zip_buffer, 'w') as zip_file:
+                        for i, audio in enumerate(enhanced_audios):
+                            single_audio_path = tempfile.mktemp(suffix=".wav")
+                            audio.export(single_audio_path, format="wav")
+                            zip_file.write(single_audio_path, arcname=f"{output_file_name}_{i + 1}.wav")
+
+                    zip_buffer.seek(0)
+                    st.subheader("Individual Enhanced Audios")
+                    st.download_button(label="Download Individual Enhanced Audios", data=zip_buffer, file_name=f"{output_file_name}.zip", mime="application/zip")
+
+    else:
+        st.warning("Please upload audio files to get started.")
