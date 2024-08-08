@@ -61,108 +61,95 @@ if uploaded_files:
         return eq_freqs, tempo, speed, compression_threshold, noise_reduction
 
     def remove_silence(audio, silence_thresh, min_silence_len):
-        # Detect non-silent chunks based on the threshold
         non_silence_chunks = []
         start_time = None
 
-        # Get samples and the frame rate for precise detection
         samples = np.array(audio.get_array_of_samples())
         sample_rate = audio.frame_rate
-        
-        # Calculate the silence threshold in terms of samples
-        silence_thresh_samples = 10 ** ((silence_thresh + 90) / 20)  # Convert dBFS to amplitude
+        silence_thresh_samples = 10 ** ((silence_thresh + 90) / 20)
 
-        for i in range(0, len(samples), sample_rate // 10):  # Check every 100ms
+        for i in range(0, len(samples), sample_rate // 10):
             chunk = samples[i:i + sample_rate // 10]
-            if np.abs(chunk).mean() > silence_thresh_samples:  # Non-silent
+            if np.abs(chunk).mean() > silence_thresh_samples:
                 if start_time is None:
                     start_time = i / sample_rate
-            else:  # Silent
+            else:
                 if start_time is not None and (i / sample_rate - start_time) >= (min_silence_len / 1000):
                     non_silence_chunks.append(audio[start_time * 1000:i / sample_rate * 1000])
                     start_time = None
 
-        # Add the last chunk if it ends with non-silence
         if start_time is not None:
             non_silence_chunks.append(audio[start_time * 1000:])
 
-        # Concatenate all non-silent chunks without padding
         if non_silence_chunks:
             trimmed_audio = sum(non_silence_chunks)
         else:
-            return audio  # Return original audio if no non-silent segments found
+            return audio
 
         return trimmed_audio
 
-    for idx, uploaded_file in enumerate(uploaded_files):
-        suffix = os.path.splitext(uploaded_file.name)[1]
-        with tempfile.NamedTemporaryFile(delete=False, suffix=suffix) as temp_file:
-            temp_file.write(uploaded_file.read())
-            audio_path = temp_file.name
-
-        logger.info(f"Uploaded file saved to {audio_path}")
-
-        # Load audio
-        try:
-            audio = AudioSegment.from_file(audio_path)
-            st.audio(audio_path, format='audio/' + suffix[1:])
-        except Exception as e:
-            st.error(f"Failed to load audio file: {e}")
-            logger.error(f"Error loading audio file: {e}")
-            st.stop()
-
-        st.subheader(f"Audio Enhancement Settings for {uploaded_file.name}")
-
-        if apply_globally == "Yes":
-            if idx == 0:
-                eq_freqs, tempo, speed, compression_threshold, noise_reduction = render_settings()
-        else:
-            eq_freqs, tempo, speed, compression_threshold, noise_reduction = render_settings()
-
-        # Default silence threshold for the removal process
-        silence_thresh = -50  # You can adjust this value as needed
-        min_silence_len = 800  # Minimum silence length in milliseconds
-
     if apply_globally == "Yes":
-        if st.button("Apply Enhancements to All Files"):
-            for uploaded_file in uploaded_files:
-                try:
-                    adjusted_audio = audio._spawn(audio.raw_data, overrides={"frame_rate": int(audio.frame_rate * (1 + tempo / 100))})
-                    adjusted_audio = adjusted_audio.set_frame_rate(audio.frame_rate)
-                    adjusted_audio = adjusted_audio.speedup(playback_speed=1 + speed / 100)
+        eq_freqs, tempo, speed, compression_threshold, noise_reduction = render_settings()
 
-                    if compression_threshold:
-                        adjusted_audio = adjusted_audio.compress_dynamic_range(compression_threshold)
+    # Handle audio processing
+    if st.button("Apply Enhancements"):
+        for uploaded_file in uploaded_files:
+            suffix = os.path.splitext(uploaded_file.name)[1]
+            with tempfile.NamedTemporaryFile(delete=False, suffix=suffix) as temp_file:
+                temp_file.write(uploaded_file.read())
+                audio_path = temp_file.name
 
-                    if noise_reduction:
-                        samples = np.array(adjusted_audio.get_array_of_samples())
-                        reduced_noise = nr.reduce_noise(y=samples, sr=audio.frame_rate, prop_decrease=noise_reduction / 30.0)
-                        reduced_audio = AudioSegment(
-                            data=reduced_noise.astype(np.int16).tobytes(),
-                            sample_width=adjusted_audio.sample_width,
-                            frame_rate=adjusted_audio.frame_rate,
-                            channels=adjusted_audio.channels
-                        )
-                        adjusted_audio = reduced_audio
+            logger.info(f"Uploaded file saved to {audio_path}")
 
-                    trimmed_audio = remove_silence(adjusted_audio, silence_thresh, min_silence_len)
-                    normalized_audio = normalize(trimmed_audio)
-                    enhanced_audios.append(normalized_audio)
-                except Exception as e:
-                    st.error(f"An error occurred while processing {uploaded_file.name}: {e}")
-                    logger.error(f"Error applying enhancements: {e}")
+            # Load audio
+            try:
+                audio = AudioSegment.from_file(audio_path)
+            except Exception as e:
+                st.error(f"Failed to load audio file: {e}")
+                logger.error(f"Error loading audio file: {e}")
+                st.stop()
 
-    # Handle export of enhanced audios
-    if enhanced_audios:
-        buffer = BytesIO()
-        if len(enhanced_audios) > 1:
-            st.write("Do you want to merge all files into one?")
-            merge_option = st.radio("", ("Yes", "No"), index=1, key="merge_option")
+            # Calculate average dB level and set silence parameters
+            avg_dB = 20 * np.log10(np.sqrt(np.mean(np.array(audio.get_array_of_samples()) ** 2)) / 32768)
+            auto_silence_thresh = avg_dB - 10
+            min_silence_len = 800
+
+            # Apply enhancements
+            try:
+                adjusted_audio = audio._spawn(audio.raw_data, overrides={"frame_rate": int(audio.frame_rate * (1 + tempo / 100))})
+                adjusted_audio = adjusted_audio.set_frame_rate(audio.frame_rate)
+                adjusted_audio = adjusted_audio.speedup(playback_speed=1 + speed / 100)
+
+                if compression_threshold:
+                    adjusted_audio = adjusted_audio.compress_dynamic_range(compression_threshold)
+
+                if noise_reduction:
+                    samples = np.array(adjusted_audio.get_array_of_samples())
+                    reduced_noise = nr.reduce_noise(y=samples, sr=audio.frame_rate, prop_decrease=noise_reduction / 30.0)
+                    reduced_audio = AudioSegment(
+                        data=reduced_noise.astype(np.int16).tobytes(),
+                        sample_width=adjusted_audio.sample_width,
+                        frame_rate=adjusted_audio.frame_rate,
+                        channels=adjusted_audio.channels
+                    )
+                    adjusted_audio = reduced_audio
+
+                trimmed_audio = remove_silence(adjusted_audio, auto_silence_thresh, min_silence_len)
+                normalized_audio = normalize(trimmed_audio)
+                enhanced_audios.append(normalized_audio)
+            except Exception as e:
+                st.error(f"An error occurred while processing {uploaded_file.name}: {e}")
+                logger.error(f"Error applying enhancements: {e}")
+
+        # Handle export of enhanced audios
+        if enhanced_audios:
+            buffer = BytesIO()
+            merge_option = st.radio("Do you want to merge all files into one?", ("Yes", "No"), index=0)
             if merge_option == "Yes":
                 final_audio = sum(enhanced_audios)
                 final_audio.export(buffer, format="wav")
                 buffer.seek(0)
-                st.subheader("Preview Merged Enhanced Audio")
+                st.subheader("Merged Enhanced Audio")
                 st.audio(buffer, format="audio/wav")
                 st.download_button(label="Download Merged Enhanced Audio", data=buffer, file_name=f"{output_file_name}.wav")
             else:
@@ -174,9 +161,3 @@ if uploaded_files:
                         zip_file.writestr(f"{output_file_name}_{i + 1}.wav", audio_buffer.read())
                 buffer.seek(0)
                 st.download_button(label="Download Enhanced Audio Files (ZIP)", data=buffer, file_name=f"{output_file_name}.zip")
-        else:
-            enhanced_audios[0].export(buffer, format="wav")
-            buffer.seek(0)
-            st.subheader("Preview Enhanced Audio")
-            st.audio(buffer, format="audio/wav")
-            st.download_button(label="Download Enhanced Audio", data=buffer, file_name=f"{output_file_name}.wav")
