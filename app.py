@@ -41,177 +41,186 @@ uploaded_files = st.file_uploader(
     accept_multiple_files=True
 )
 
-# Upload script/transcript
-script_or_transcript = st.text_area(f"Paste your {mode.lower()} here:")
+# Upload script/transcript as multiple lines
+script_or_transcripts = st.text_area(f"Paste your {mode.lower()} here (one per line):")
 
-if uploaded_files and script_or_transcript:
-    enhanced_outputs = []
-    
-    # Ask user for output file name
-    output_file_name = st.text_input("Enter the output file name (without extension)", "enhanced_output")
+if uploaded_files and script_or_transcripts:
+    # Split the scripts/transcripts into a list
+    scripts_or_transcripts = script_or_transcripts.splitlines()
 
-    # Choose whether to apply settings to all files or separately
-    apply_globally = st.radio("Apply settings to all files?", ("Yes", "No"), index=0)
-
-    def render_settings():
-        eq_freqs = {
-            "31.25 Hz": st.slider("31.25 Hz", -12, 12, default_eq["31.25 Hz"], key="31.25_Hz"),
-            "62.5 Hz": st.slider("62.5 Hz", -12, 12, default_eq["62.5 Hz"], key="62.5_Hz"),
-            "125 Hz": st.slider("125 Hz", -12, 12, default_eq["125 Hz"], key="125_Hz"),
-            "250 Hz": st.slider("250 Hz", -12, 12, default_eq["250 Hz"], key="250_Hz"),
-            "500 Hz": st.slider("500 Hz", -12, 12, default_eq["500 Hz"], key="500_Hz"),
-            "1 kHz": st.slider("1 kHz", -12, 12, default_eq["1 kHz"], key="1_kHz"),
-            "2 kHz": st.slider("2 kHz", -12, 12, default_eq["2 kHz"], key="2_kHz"),
-            "4 kHz": st.slider("4 kHz", -12, 12, default_eq["4 kHz"], key="4_kHz"),
-            "8 kHz": st.slider("8 kHz", -12, 12, default_eq["8_kHz"], key="8_kHz"),
-            "16 kHz": st.slider("16 kHz", -12, 12, default_eq["16_kHz"], key="16_kHz"),
-        }
-        tempo = st.slider("Change Tempo (%)", -10, 10, 0, key="tempo")
-        speed = st.slider("Change Speed (%)", -10, 10, 3, key="speed")
-        compression_threshold = st.slider("Compression Threshold (-dB)", -40, 0, -20, key="compression")
-        noise_reduction = st.slider("Background Noise Reduction (dB)", 0, 30, 10, key="noise_reduction")
-        return eq_freqs, tempo, speed, compression_threshold, noise_reduction
-
-    def remove_filler_words(transcript, audio, filler_words=["uhm", "uh", "like"]):
-        words = transcript.split()
-        cleaned_audio = AudioSegment.silent(duration=0)
-        start_time = 0
-        for word in words:
-            if word not in filler_words:
-                duration = len(audio) / len(words)
-                cleaned_audio += audio[start_time:start_time + duration]
-            start_time += duration
-        return cleaned_audio
-
-    def remove_silence_and_retakes(audio, silence_thresh, min_silence_len, script_or_transcript, mode):
-        segments = []
-        chunks = silence.split_on_silence(audio, silence_thresh=silence_thresh, min_silence_len=min_silence_len)
+    # Check if the number of scripts matches the number of uploaded files
+    if len(scripts_or_transcripts) != len(uploaded_files):
+        st.error("The number of scripts/transcripts must match the number of uploaded files.")
+    else:
+        enhanced_outputs = []
         
-        for chunk in chunks:
-            chunk_text = recognize_speech(chunk)  # Dummy function, replace with actual speech-to-text
-            if mode == "Script-based":
-                if "..." in chunk_text:
-                    segments.append(chunk)
-                elif re.match(script_or_transcript, chunk_text):  # Matching against script
-                    segments.append(chunk)
-            else:  # Transcript-based
-                if re.match(script_or_transcript, chunk_text):  # Matching against transcript
-                    segments.append(chunk)
+        # Ask user for output file name
+        output_file_name = st.text_input("Enter the output file name (without extension)", "enhanced_output")
 
-        return sum(segments)
+        # Choose whether to apply settings to all files or separately
+        apply_globally = st.radio("Apply settings to all files?", ("Yes", "No"), index=0)
 
-    if apply_globally == "Yes":
-        eq_freqs, tempo, speed, compression_threshold, noise_reduction = render_settings()
+        def render_settings():
+            eq_freqs = {
+                "31.25 Hz": st.slider("31.25 Hz", -12, 12, default_eq["31.25 Hz"], key="31.25_Hz"),
+                "62.5 Hz": st.slider("62.5 Hz", -12, 12, default_eq["62.5 Hz"], key="62.5_Hz"),
+                "125 Hz": st.slider("125 Hz", -12, 12, default_eq["125 Hz"], key="125_Hz"),
+                "250 Hz": st.slider("250 Hz", -12, 12, default_eq["250 Hz"], key="250_Hz"),
+                "500 Hz": st.slider("500 Hz", -12, 12, default_eq["500 Hz"], key="500_Hz"),
+                "1 kHz": st.slider("1 kHz", -12, 12, default_eq["1 kHz"], key="1_kHz"),
+                "2 kHz": st.slider("2 kHz", -12, 12, default_eq["2 kHz"], key="2_kHz"),
+                "4 kHz": st.slider("4 kHz", -12, 12, default_eq["4 kHz"], key="4_kHz"),
+                "8 kHz": st.slider("8 kHz", -12, 12, default_eq["8_kHz"], key="8_kHz"),
+                "16 kHz": st.slider("16 kHz", -12, 12, default_eq["16_kHz"], key="16_kHz"),
+            }
+            tempo = st.slider("Change Tempo (%)", -10, 10, 0, key="tempo")
+            speed = st.slider("Change Speed (%)", -10, 10, 3, key="speed")
+            compression_threshold = st.slider("Compression Threshold (-dB)", -40, 0, -20, key="compression")
+            noise_reduction = st.slider("Background Noise Reduction (dB)", 0, 30, 10, key="noise_reduction")
+            return eq_freqs, tempo, speed, compression_threshold, noise_reduction
 
-    # Handle audio/video processing
-    if st.button("Apply Enhancements"):
-        for uploaded_file in uploaded_files:
-            suffix = os.path.splitext(uploaded_file.name)[1]
-            with tempfile.NamedTemporaryFile(delete=False, suffix=suffix) as temp_file:
-                temp_file.write(uploaded_file.read())
-                file_path = temp_file.name
+        def remove_filler_words(transcript, audio, filler_words=["uhm", "uh", "like"]):
+            words = transcript.split()
+            cleaned_audio = AudioSegment.silent(duration=0)
+            start_time = 0
+            for word in words:
+                if word not in filler_words:
+                    duration = len(audio) / len(words)
+                    cleaned_audio += audio[start_time:start_time + duration]
+                start_time += duration
+            return cleaned_audio
 
-            logger.info(f"Uploaded file saved to {file_path}")
+        def remove_silence_and_retakes(audio, silence_thresh, min_silence_len, script_or_transcript, mode):
+            segments = []
+            chunks = silence.split_on_silence(audio, silence_thresh=silence_thresh, min_silence_len=min_silence_len)
+            
+            for chunk in chunks:
+                chunk_text = recognize_speech(chunk)  # Dummy function, replace with actual speech-to-text
+                if mode == "Script-based":
+                    if "..." in chunk_text:
+                        segments.append(chunk)
+                    elif re.match(script_or_transcript, chunk_text):  # Matching against script
+                        segments.append(chunk)
+                else:  # Transcript-based
+                    if re.match(script_or_transcript, chunk_text):  # Matching against transcript
+                        segments.append(chunk)
 
-            # Load audio or video
-            if suffix in [".wav", ".mp3"]:
+            return sum(segments)
+
+        if apply_globally == "Yes":
+            eq_freqs, tempo, speed, compression_threshold, noise_reduction = render_settings()
+
+        # Handle audio/video processing
+        if st.button("Apply Enhancements"):
+            for idx, uploaded_file in enumerate(uploaded_files):
+                suffix = os.path.splitext(uploaded_file.name)[1]
+                with tempfile.NamedTemporaryFile(delete=False, suffix=suffix) as temp_file:
+                    temp_file.write(uploaded_file.read())
+                    file_path = temp_file.name
+
+                logger.info(f"Uploaded file saved to {file_path}")
+
+                # Load audio or video
+                if suffix in [".wav", ".mp3"]:
+                    try:
+                        audio = AudioSegment.from_file(file_path)
+                        is_video = False
+                    except Exception as e:
+                        st.error(f"Failed to load audio file: {e}")
+                        logger.error(f"Error loading audio file: {e}")
+                        st.stop()
+                else:
+                    try:
+                        video = VideoFileClip(file_path)
+                        audio = video.audio
+                        is_video = True
+                    except Exception as e:
+                        st.error(f"Failed to load video file: {e}")
+                        logger.error(f"Error loading video file: {e}")
+                        st.stop()
+
+                # Calculate average dB level and set silence parameters
+                avg_dB = 20 * np.log10(np.sqrt(np.mean(np.array(audio.to_soundarray()) ** 2)) / 32768)
+                auto_silence_thresh = avg_dB - 10
+                min_silence_len = 1000
+
+                # Apply enhancements
                 try:
-                    audio = AudioSegment.from_file(file_path)
-                    is_video = False
+                    adjusted_audio = audio._spawn(audio.raw_data, overrides={"frame_rate": int(audio.frame_rate * (1 + tempo / 100))})
+                    adjusted_audio = adjusted_audio.set_frame_rate(audio.frame_rate)
+                    adjusted_audio = adjusted_audio.speedup(playback_speed=1 + speed / 100)
+
+                    if compression_threshold:
+                        adjusted_audio = adjusted_audio.compress_dynamic_range(compression_threshold)
+
+                    if noise_reduction:
+                        samples = np.array(adjusted_audio.get_array_of_samples())
+                        reduced_noise = nr.reduce_noise(y=samples, sr=audio.frame_rate, prop_decrease=noise_reduction / 30.0)
+                        reduced_audio = AudioSegment(
+                            data=reduced_noise.astype(np.int16).tobytes(),
+                            sample_width=adjusted_audio.sample_width,
+                            frame_rate=adjusted_audio.frame_rate,
+                            channels=adjusted_audio.channels
+                        )
+                        adjusted_audio = reduced_audio
+
+                    # Use the respective script/transcript for each file
+                    script_or_transcript = scripts_or_transcripts[idx]
+                    adjusted_audio = remove_filler_words(script_or_transcript, adjusted_audio)
+                    trimmed_audio = remove_silence_and_retakes(adjusted_audio, auto_silence_thresh, min_silence_len, script_or_transcript, mode)
+                    normalized_audio = normalize(trimmed_audio)
+
+                    if is_video:
+                        video_clips = []
+                        for i, clip in enumerate(video.iter_frames()):
+                            if i * 1000 // video.fps in trimmed_audio.get_array_of_samples():
+                                video_clips.append(video.subclip(i, i + 1))
+                        final_video = concatenate_videoclips(video_clips)
+                        final_video.set_audio(normalized_audio)
+                        output = final_video
+                    else:
+                        output = normalized_audio
+
+                    enhanced_outputs.append(output)
                 except Exception as e:
-                    st.error(f"Failed to load audio file: {e}")
-                    logger.error(f"Error loading audio file: {e}")
-                    st.stop()
-            else:
-                try:
-                    video = VideoFileClip(file_path)
-                    audio = video.audio
-                    is_video = True
-                except Exception as e:
-                    st.error(f"Failed to load video file: {e}")
-                    logger.error(f"Error loading video file: {e}")
-                    st.stop()
+                    st.error(f"An error occurred while processing {uploaded_file.name}: {e}")
+                    logger.error(f"Error applying enhancements: {e}")
 
-            # Calculate average dB level and set silence parameters
-            avg_dB = 20 * np.log10(np.sqrt(np.mean(np.array(audio.to_soundarray()) ** 2)) / 32768)
-            auto_silence_thresh = avg_dB - 10
-            min_silence_len = 1000
+            # Handle export of enhanced outputs
+            if enhanced_outputs:
+                buffer = BytesIO()
+                merge_option = st.radio("Do you want to merge all files into one?", ("Yes", "No"), index=0)
+                if merge_option == "Yes":
+                    # Create a 1-second silent pause
+                    pause = AudioSegment.silent(duration=1000)
 
-            # Apply enhancements
-            try:
-                adjusted_audio = audio._spawn(audio.raw_data, overrides={"frame_rate": int(audio.frame_rate * (1 + tempo / 100))})
-                adjusted_audio = adjusted_audio.set_frame_rate(audio.frame_rate)
-                adjusted_audio = adjusted_audio.speedup(playback_speed=1 + speed / 100)
+                    # Add the pause between each audio segment
+                    final_output = enhanced_outputs[0]
+                    for output in enhanced_outputs[1:]:
+                        final_output += pause + output
 
-                if compression_threshold:
-                    adjusted_audio = adjusted_audio.compress_dynamic_range(compression_threshold)
-
-                if noise_reduction:
-                    samples = np.array(adjusted_audio.get_array_of_samples())
-                    reduced_noise = nr.reduce_noise(y=samples, sr=audio.frame_rate, prop_decrease=noise_reduction / 30.0)
-                    reduced_audio = AudioSegment(
-                        data=reduced_noise.astype(np.int16).tobytes(),
-                        sample_width=adjusted_audio.sample_width,
-                        frame_rate=adjusted_audio.frame_rate,
-                        channels=adjusted_audio.channels
-                    )
-                    adjusted_audio = reduced_audio
-
-                adjusted_audio = remove_filler_words(script_or_transcript, adjusted_audio)
-                trimmed_audio = remove_silence_and_retakes(adjusted_audio, auto_silence_thresh, min_silence_len, script_or_transcript, mode)
-                normalized_audio = normalize(trimmed_audio)
-
-                if is_video:
-                    video_clips = []
-                    for i, clip in enumerate(video.iter_frames()):
-                        if i * 1000 // video.fps in trimmed_audio.get_array_of_samples():
-                            video_clips.append(video.subclip(i, i + 1))
-                    final_video = concatenate_videoclips(video_clips)
-                    final_video.set_audio(normalized_audio)
-                    output = final_video
+                    if is_video:
+                        final_output.write_videofile(buffer)
+                    else:
+                        final_output.export(buffer, format="wav")
+                    buffer.seek(0)
+                    if is_video:
+                        st.subheader("Merged Enhanced Video")
+                        st.video(buffer)
+                        st.download_button(label="Download Merged Enhanced Video", data=buffer, file_name=f"{output_file_name}.mp4")
+                    else:
+                        st.subheader("Merged Enhanced Audio")
+                        st.audio(buffer, format="audio/wav")
+                        st.download_button(label="Download Merged Enhanced Audio", data=buffer, file_name=f"{output_file_name}.wav")
                 else:
-                    output = normalized_audio
-
-                enhanced_outputs.append(output)
-            except Exception as e:
-                st.error(f"An error occurred while processing {uploaded_file.name}: {e}")
-                logger.error(f"Error applying enhancements: {e}")
-
-        # Handle export of enhanced outputs
-        if enhanced_outputs:
-            buffer = BytesIO()
-            merge_option = st.radio("Do you want to merge all files into one?", ("Yes", "No"), index=0)
-            if merge_option == "Yes":
-                # Create a 1-second silent pause
-                pause = AudioSegment.silent(duration=1000)
-
-                # Add the pause between each audio segment
-                final_output = enhanced_outputs[0]
-                for output in enhanced_outputs[1:]:
-                    final_output += pause + output
-
-                if is_video:
-                    final_output.write_videofile(buffer)
-                else:
-                    final_output.export(buffer, format="wav")
-                buffer.seek(0)
-                if is_video:
-                    st.subheader("Merged Enhanced Video")
-                    st.video(buffer)
-                    st.download_button(label="Download Merged Enhanced Video", data=buffer, file_name=f"{output_file_name}.mp4")
-                else:
-                    st.subheader("Merged Enhanced Audio")
-                    st.audio(buffer, format="audio/wav")
-                    st.download_button(label="Download Merged Enhanced Audio", data=buffer, file_name=f"{output_file_name}.wav")
-            else:
-                with zipfile.ZipFile(buffer, "w") as zip_file:
-                    for i, output in enumerate(enhanced_outputs):
-                        output_buffer = BytesIO()
-                        if is_video:
-                            output.write_videofile(output_buffer)
-                        else:
-                            output.export(output_buffer, format="wav")
-                        output_buffer.seek(0)
-                        zip_file.writestr(f"{output_file_name}_{i + 1}.{'mp4' if is_video else 'wav'}", output_buffer.read())
-                buffer.seek(0)
-                st.download_button(label="Download Enhanced Files (ZIP)", data=buffer, file_name=f"{output_file_name}.zip")
+                    with zipfile.ZipFile(buffer, "w") as zip_file:
+                        for i, output in enumerate(enhanced_outputs):
+                            output_buffer = BytesIO()
+                            if is_video:
+                                output.write_videofile(output_buffer)
+                            else:
+                                output.export(output_buffer, format="wav")
+                            output_buffer.seek(0)
+                            zip_file.writestr(f"{output_file_name}_{i + 1}.{'mp4' if is_video else 'wav'}", output_buffer.read())
+                    buffer.seek(0)
+                    st.download_button(label="Download Enhanced Files (ZIP)", data=buffer, file_name=f"{output_file_name}.zip")
