@@ -10,7 +10,7 @@ import noisereduce as nr
 import zipfile
 from moviepy.editor import VideoFileClip, concatenate_videoclips
 import re
-import speech_recognition as sr  # Importing speech recognition library
+import speech_recognition as sr
 
 # Setup logging
 logging.basicConfig(level=logging.INFO)
@@ -98,7 +98,8 @@ if uploaded_files and all(scripts_or_transcripts):
         for word in words:
             if word not in filler_words:
                 duration = len(audio) / len(words) if words else 0
-                cleaned_audio += audio[start_time:start_time + duration]
+                if start_time + duration <= len(audio):  # Ensure the segment does not exceed the audio length
+                    cleaned_audio += audio[start_time:start_time + duration]
             start_time += duration
         return cleaned_audio
 
@@ -117,7 +118,7 @@ if uploaded_files and all(scripts_or_transcripts):
                 if re.match(script_or_transcript, chunk_text):  # Matching against transcript
                     segments.append(chunk)
 
-        return sum(segments)
+        return sum(segments) if segments else AudioSegment.silent(duration=0)  # Return silent audio if no segments
 
     if apply_globally == "Yes":
         eq_freqs, tempo, speed, compression_threshold, noise_reduction = render_settings()
@@ -152,13 +153,13 @@ if uploaded_files and all(scripts_or_transcripts):
                     st.stop()
 
             # Calculate average dB level and set silence parameters
-            samples = np.array(audio.get_array_of_samples())
-            avg_dB = 20 * np.log10(np.sqrt(np.mean(samples ** 2)) / 32768) if samples.size > 0 else -np.inf
-            auto_silence_thresh = avg_dB - 10
-            min_silence_len = 1000
-
-            # Apply enhancements
             try:
+                samples = np.array(audio.get_array_of_samples())
+                avg_dB = 20 * np.log10(np.sqrt(np.mean(samples ** 2)) / 32768.0) if samples.size > 0 else -np.inf
+                auto_silence_thresh = avg_dB - 10
+                min_silence_len = 1000
+
+                # Apply enhancements
                 adjusted_audio = audio._spawn(audio.raw_data, overrides={"frame_rate": int(audio.frame_rate * (1 + tempo / 100))})
                 adjusted_audio = adjusted_audio.set_frame_rate(audio.frame_rate)
                 adjusted_audio = adjusted_audio.speedup(playback_speed=1 + speed / 100)
@@ -239,4 +240,3 @@ if uploaded_files and all(scripts_or_transcripts):
                         zip_file.writestr(f"{output_file_name}_{i + 1}.{'mp4' if is_video else 'wav'}", output_buffer.read())
                 buffer.seek(0)
                 st.download_button(label="Download Enhanced Files (ZIP)", data=buffer, file_name=f"{output_file_name}.zip")
-
