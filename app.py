@@ -141,7 +141,7 @@ if uploaded_files:
             logger.error(f"Error applying enhancements: {e}")
             return None
 
-    # Handle audio processing
+   # Handle audio processing
 if st.button("Apply Enhancements"):
     progress_bar = st.progress(0)  # Initialize progress bar
     progress_text = st.empty()  # Placeholder for progress text
@@ -166,7 +166,8 @@ if st.button("Apply Enhancements"):
             # Update progress bar after processing each file
             progress_bar.progress((i + 1) / total_files)
 
-    progress_text.text("Processing complete!")
+    progress_text.text("Processing complete!")  # Ensure this line is aligned with the for loop
+
 
 
         progress_text.text("Processing complete!")
