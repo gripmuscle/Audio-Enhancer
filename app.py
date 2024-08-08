@@ -91,12 +91,13 @@ if uploaded_files and all(scripts_or_transcripts):
                     logger.error(f"Could not request results from Google Speech Recognition service; {e}")
                     return ""
 
-    def remove_filler_words(transcript, audio, filler_words=["uhm", "uh", "like"]):
-        words = transcript.split()
+    def remove_filler_words(transcript, audio):
+        filler_words_pattern = r"\b(um|uh|hmm|like|uhm|ah|[^\w\s]|[^\w\s]\w*|[\s\-])\b"
+        words = re.split(r'\s+', transcript)
         cleaned_audio = AudioSegment.silent(duration=0)
         start_time = 0
         for word in words:
-            if word not in filler_words:
+            if not re.match(filler_words_pattern, word, re.IGNORECASE):
                 duration = len(audio) / len(words) if words else 0
                 if start_time + duration <= len(audio):  # Ensure the segment does not exceed the audio length
                     cleaned_audio += audio[start_time:start_time + duration]
