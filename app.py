@@ -39,7 +39,7 @@ if uploaded_files:
     # Ask user for output file name
     output_file_name = st.text_input("Enter the output file name (without extension)", "enhanced_audio")
 
-    for uploaded_file in uploaded_files:
+    for idx, uploaded_file in enumerate(uploaded_files):
         suffix = os.path.splitext(uploaded_file.name)[1]
         with tempfile.NamedTemporaryFile(delete=False, suffix=suffix) as temp_file:
             temp_file.write(uploaded_file.read())
@@ -73,27 +73,27 @@ if uploaded_files:
 
         st.write("Equalizer Settings:")
         eq_freqs = {
-            "31.25 Hz": st.slider("31.25 Hz", -12, 12, default_eq["31.25 Hz"]),
-            "62.5 Hz": st.slider("62.5 Hz", -12, 12, default_eq["62.5 Hz"]),
-            "125 Hz": st.slider("125 Hz", -12, 12, default_eq["125 Hz"]),
-            "250 Hz": st.slider("250 Hz", -12, 12, default_eq["250 Hz"]),
-            "500 Hz": st.slider("500 Hz", -12, 12, default_eq["500 Hz"]),
-            "1 kHz": st.slider("1 kHz", -12, 12, default_eq["1 kHz"]),
-            "2 kHz": st.slider("2 kHz", -12, 12, default_eq["2 kHz"]),
-            "4 kHz": st.slider("4 kHz", -12, 12, default_eq["4 kHz"]),
-            "8 kHz": st.slider("8 kHz", -12, 12, default_eq["8 kHz"]),
-            "16 kHz": st.slider("16 kHz", -12, 12, default_eq["16 kHz"]),
+            "31.25 Hz": st.slider("31.25 Hz", -12, 12, default_eq["31.25 Hz"], key=f"31.25_Hz_{idx}"),
+            "62.5 Hz": st.slider("62.5 Hz", -12, 12, default_eq["62.5 Hz"], key=f"62.5_Hz_{idx}"),
+            "125 Hz": st.slider("125 Hz", -12, 12, default_eq["125 Hz"], key=f"125_Hz_{idx}"),
+            "250 Hz": st.slider("250 Hz", -12, 12, default_eq["250 Hz"], key=f"250_Hz_{idx}"),
+            "500 Hz": st.slider("500 Hz", -12, 12, default_eq["500 Hz"], key=f"500_Hz_{idx}"),
+            "1 kHz": st.slider("1 kHz", -12, 12, default_eq["1 kHz"], key=f"1_kHz_{idx}"),
+            "2 kHz": st.slider("2 kHz", -12, 12, default_eq["2 kHz"], key=f"2_kHz_{idx}"),
+            "4 kHz": st.slider("4 kHz", -12, 12, default_eq["4 kHz"], key=f"4_kHz_{idx}"),
+            "8 kHz": st.slider("8 kHz", -12, 12, default_eq["8 kHz"], key=f"8_kHz_{idx}"),
+            "16 kHz": st.slider("16 kHz", -12, 12, default_eq["16 kHz"], key=f"16_kHz_{idx}"),
         }
 
-        tempo = st.slider("Change Tempo (%)", -10, 10, 0)
-        speed = st.slider("Change Speed (%)", -10, 10, 3)
-        compression_threshold = st.slider("Compression Threshold (-dB)", -40, 0, -20)
-        noise_reduction = st.slider("Background Noise Reduction (dB)", 0, 30, 10)
+        tempo = st.slider("Change Tempo (%)", -10, 10, 0, key=f"tempo_{idx}")
+        speed = st.slider("Change Speed (%)", -10, 10, 3, key=f"speed_{idx}")
+        compression_threshold = st.slider("Compression Threshold (-dB)", -40, 0, -20, key=f"compression_{idx}")
+        noise_reduction = st.slider("Background Noise Reduction (dB)", 0, 30, 10, key=f"noise_reduction_{idx}")
 
         st.write(f"Auto-detected Silence Threshold: {auto_silence_thresh:.2f} dB")
         st.write(f"Minimum Silence Length: {min_silence_len} ms")
 
-        if st.button("Apply Enhancements"):
+        if st.button(f"Apply Enhancements", key=f"apply_{idx}"):
             try:
                 logger.info("Applying enhancements")
 
@@ -127,10 +127,11 @@ if uploaded_files:
 
                 def remove_silence(audio, silence_thresh, min_silence_len, padding):
                     segments = silence.split_on_silence(audio, silence_thresh=silence_thresh, min_silence_len=min_silence_len)
-                    trimmed_audio = AudioSegment.empty()
-                    for segment in segments:
-                        trimmed_audio += segment
-                        trimmed_audio += AudioSegment.silent(duration=padding)
+                    if not segments:
+                        return audio  # Return original audio if no non-silent segments found
+                    trimmed_audio = segments[0]
+                    for segment in segments[1:]:
+                        trimmed_audio += AudioSegment.silent(duration=padding) + segment
                     return trimmed_audio
 
                 trimmed_audio = remove_silence(adjusted_audio, auto_silence_thresh, min_silence_len, padding=100)
@@ -147,7 +148,7 @@ if uploaded_files:
 
         if len(enhanced_audios) > 1:
             st.write("Do you want to merge all files into one?")
-            merge_option = st.radio("", ("Yes", "No"), index=1)
+            merge_option = st.radio("", ("Yes", "No"), index=1, key="merge_option")
             if merge_option == "Yes":
                 final_audio = sum(enhanced_audios)
                 final_audio.export(buffer, format="wav")
