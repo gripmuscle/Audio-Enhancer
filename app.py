@@ -65,18 +65,19 @@ if uploaded_files:
         non_silence_chunks = []
         start_time = None
         samples = np.array(audio.get_array_of_samples(), dtype=np.int16)  # Use a specific data type
+        sample_rate = audio.frame_rate
         silence_thresh_samples = 10 ** ((silence_thresh + 90) / 20)
 
         # Process in larger chunks
-        chunk_size = audio.frame_rate // 10
+        chunk_size = sample_rate // 10
         for i in range(0, len(samples), chunk_size):
             chunk = samples[i:i + chunk_size]
             if np.abs(chunk).mean() > silence_thresh_samples:
                 if start_time is None:
-                    start_time = i / audio.frame_rate
+                    start_time = i / sample_rate
             else:
-                if start_time is not None and (i / audio.frame_rate - start_time) >= (min_silence_len / 1000):
-                    non_silence_chunks.append(audio[start_time * 1000:i / audio.frame_rate * 1000])
+                if start_time is not None and (i / sample_rate - start_time) >= (min_silence_len / 1000):
+                    non_silence_chunks.append(audio[start_time * 1000:i / sample_rate * 1000])
                     start_time = None
 
         if start_time is not None:
@@ -89,7 +90,8 @@ if uploaded_files:
 
         return trimmed_audio
 
-    eq_freqs, tempo, speed, compression_threshold, noise_reduction = (render_settings() if apply_globally == "Yes" else (None, 0, 0, None, 0))
+    if apply_globally == "Yes":
+        eq_freqs, tempo, speed, compression_threshold, noise_reduction = render_settings()
 
     # Define a function for processing audio
     def process_audio(uploaded_file, eq_freqs, tempo, speed, compression_threshold, noise_reduction):
@@ -142,7 +144,15 @@ if uploaded_files:
     # Handle audio processing
     if st.button("Apply Enhancements"):
         with ThreadPoolExecutor() as executor:
-            futures = {executor.submit(process_audio, uploaded_file, eq_freqs if apply_globally == "Yes" else (None, 0, 0, None, 0)): uploaded_file for uploaded_file in uploaded_files}
+            futures = {
+                executor.submit(process_audio, uploaded_file,
+                                eq_freqs if apply_globally == "Yes" else default_eq,
+                                tempo if apply_globally == "Yes" else 0,
+                                speed if apply_globally == "Yes" else 3,
+                                compression_threshold if apply_globally == "Yes" else None,
+                                noise_reduction if apply_globally == "Yes" else 0
+                ): uploaded_file for uploaded_file in uploaded_files
+            }
 
             for future in as_completed(futures):
                 uploaded_file = futures[future]  # Reference to the uploaded file
