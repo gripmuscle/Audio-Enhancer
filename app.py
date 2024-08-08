@@ -72,7 +72,7 @@ if uploaded_files and all(scripts_or_transcripts):
             "16 kHz": st.slider("16 kHz", -12, 12, default_eq["16 kHz"], key="16 kHz"),
         }
         tempo = st.slider("Change Tempo (%)", -10, 10, 0, key="tempo")
-        speed = st.slider("Change Speed (%)", -10, 10, 3, key="speed")
+        speed = st.slider("Change Speed (%)", -10, 10, 0, key="speed")  # Default speed should be 0 for normal speed
         compression_threshold = st.slider("Compression Threshold (-dB)", -40, 0, -20, key="compression")
         noise_reduction = st.slider("Background Noise Reduction (dB)", 0, 30, 10, key="noise_reduction")
         return eq_freqs, tempo, speed, compression_threshold, noise_reduction
@@ -110,12 +110,10 @@ if uploaded_files and all(scripts_or_transcripts):
         for chunk in chunks:
             chunk_text = recognize_speech(chunk)  # Use the speech-to-text function
             if mode == "Script-based":
-                if "..." in chunk_text:
-                    segments.append(chunk)
-                elif re.match(script_or_transcript, chunk_text):  # Matching against script
+                if "..." in chunk_text or re.match(script_or_transcript, chunk_text):  # Match against script
                     segments.append(chunk)
             else:  # Transcript-based
-                if re.match(script_or_transcript, chunk_text):  # Matching against transcript
+                if re.match(script_or_transcript, chunk_text):  # Match against transcript
                     segments.append(chunk)
 
         return sum(segments) if segments else AudioSegment.silent(duration=0)  # Return silent audio if no segments
