@@ -161,13 +161,12 @@ if uploaded_files and all(scripts_or_transcripts):
                         samples = np.array(adjusted_audio.get_array_of_samples())
                         if samples.size > 0:
                             reduced_noise = nr.reduce_noise(y=samples, sr=audio.frame_rate, prop_decrease=noise_reduction / 30.0)
-                            reduced_audio = AudioSegment(
+                            adjusted_audio = AudioSegment(
                                 data=reduced_noise.astype(np.int16).tobytes(),
                                 sample_width=adjusted_audio.sample_width,
                                 frame_rate=adjusted_audio.frame_rate,
                                 channels=adjusted_audio.channels
                             )
-                            adjusted_audio = reduced_audio
 
                     # Use the respective script/transcript for each file
                     script_or_transcript = scripts_or_transcripts[idx]
