@@ -239,3 +239,4 @@ if uploaded_files and all(scripts_or_transcripts):
                         zip_file.writestr(f"{output_file_name}_{i + 1}.{'mp4' if is_video else 'wav'}", output_buffer.read())
                 buffer.seek(0)
                 st.download_button(label="Download Enhanced Files (ZIP)", data=buffer, file_name=f"{output_file_name}.zip")
+
