@@ -1,5 +1,5 @@
 import streamlit as st
-from pydub import AudioSegment
+from pydub import AudioSegment, silence
 from pydub.effects import normalize
 import tempfile
 from io import BytesIO
@@ -100,7 +100,7 @@ if uploaded_files:
             temp_file.write(uploaded_file.read())
             audio_path = temp_file.name
 
-        logger.info(f"Uploaded file saved to {audio_path}")
+        logger.info(f"Processing file: {uploaded_file.name}")
 
         # Load audio
         try:
@@ -120,11 +120,11 @@ if uploaded_files:
             adjusted_audio = adjusted_audio.set_frame_rate(audio.frame_rate)
             adjusted_audio = adjusted_audio.speedup(playback_speed=1 + speed / 100)
 
-            if compression_threshold is not None:
+            if compression_threshold:
                 adjusted_audio = adjusted_audio.compress_dynamic_range(compression_threshold)
 
-            if noise_reduction > 0:
-                samples = np.array(adjusted_audio.get_array_of_samples(), dtype=np.int16)
+            if noise_reduction:
+                samples = np.array(adjusted_audio.get_array_of_samples(), dtype=np.int16)  # Use specific data type for efficiency
                 reduced_noise = nr.reduce_noise(y=samples, sr=audio.frame_rate, prop_decrease=noise_reduction / 30.0)
                 reduced_audio = AudioSegment(
                     data=reduced_noise.astype(np.int16).tobytes(),
@@ -143,34 +143,35 @@ if uploaded_files:
 
     # Handle audio processing
     if st.button("Apply Enhancements"):
+        progress_bar = st.progress(0)  # Initialize progress bar
+        progress_text = st.empty()  # Placeholder for progress text
+        total_files = len(uploaded_files)
+
         with ThreadPoolExecutor() as executor:
             futures = {
-                executor.submit(process_audio, uploaded_file,
-                                eq_freqs if apply_globally == "Yes" else default_eq,
-                                tempo if apply_globally == "Yes" else 0,
-                                speed if apply_globally == "Yes" else 3,
-                                compression_threshold if apply_globally == "Yes" else None,
-                                noise_reduction if apply_globally == "Yes" else 0
-                ): uploaded_file for uploaded_file in uploaded_files
+                executor.submit(process_audio, uploaded_file, eq_freqs if apply_globally == "Yes" else render_settings()): uploaded_file for uploaded_file in uploaded_files
             }
 
-            for future in as_completed(futures):
-                uploaded_file = futures[future]  # Reference to the uploaded file
-                try:
-                    result = future.result()
-                    if result:
-                        enhanced_audios.append(result)
-                    else:
-                        st.error(f"An error occurred while processing {uploaded_file.name}")
-                except Exception as e:
-                    logger.error(f"Exception raised during processing of {uploaded_file.name}: {e}")
-                    st.error(f"An unexpected error occurred: {e}")
+            for i, future in enumerate(as_completed(futures)):
+                result = future.result()
+                progress_percentage = (i + 1) / total_files
+                progress_bar.progress(progress_percentage)  # Update progress bar
+                progress_text.text(f"Processing {i + 1} of {total_files} files...")  # Update progress text
+
+                if result:
+                    enhanced_audios.append(result)
+                else:
+                    st.error(f"An error occurred while processing {futures[future].name}")
+
+        progress_bar.empty()  # Clear progress bar
+        progress_text.text("Processing complete!")
 
         # Handle export of enhanced audios
         if enhanced_audios:
             buffer = BytesIO()
             merge_option = st.radio("Do you want to merge all files into one?", ("Yes", "No"), index=0)
             if merge_option == "Yes":
+                # Create a silent audio segment of 1 second
                 silence_segment = AudioSegment.silent(duration=500)  # 500 ms = 0.5 seconds
                 final_audio = AudioSegment.empty()
 
