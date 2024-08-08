@@ -59,16 +59,16 @@ if uploaded_files and all(scripts_or_transcripts):
 
     def render_settings():
         eq_freqs = {
-            "31.25 Hz": st.slider("31.25 Hz", -12, 12, default_eq["31.25 Hz"], key="31.25_Hz"),
-            "62.5 Hz": st.slider("62.5 Hz", -12, 12, default_eq["62.5 Hz"], key="62.5_Hz"),
-            "125 Hz": st.slider("125 Hz", -12, 12, default_eq["125 Hz"], key="125_Hz"),
-            "250 Hz": st.slider("250 Hz", -12, 12, default_eq["250 Hz"], key="250_Hz"),
-            "500 Hz": st.slider("500 Hz", -12, 12, default_eq["500 Hz"], key="500_Hz"),
-            "1 kHz": st.slider("1 kHz", -12, 12, default_eq["1 kHz"], key="1_kHz"),
-            "2 kHz": st.slider("2 kHz", -12, 12, default_eq["2 kHz"], key="2_kHz"),
-            "4 kHz": st.slider("4 kHz", -12, 12, default_eq["4 kHz"], key="4_kHz"),
-            "8 kHz": st.slider("8 kHz", -12, 12, default_eq["8_kHz"], key="8_kHz"),
-            "16 kHz": st.slider("16 kHz", -12, 12, default_eq["16_kHz"], key="16_kHz"),
+            "31.25 Hz": st.slider("31.25 Hz", -12, 12, default_eq["31.25 Hz"], key="31.25 Hz"),
+            "62.5 Hz": st.slider("62.5 Hz", -12, 12, default_eq["62.5 Hz"], key="62.5 Hz"),
+            "125 Hz": st.slider("125 Hz", -12, 12, default_eq["125 Hz"], key="125 Hz"),
+            "250 Hz": st.slider("250 Hz", -12, 12, default_eq["250 Hz"], key="250 Hz"),
+            "500 Hz": st.slider("500 Hz", -12, 12, default_eq["500 Hz"], key="500 Hz"),
+            "1 kHz": st.slider("1 kHz", -12, 12, default_eq["1 kHz"], key="1 kHz"),
+            "2 kHz": st.slider("2 kHz", -12, 12, default_eq["2 kHz"], key="2 kHz"),
+            "4 kHz": st.slider("4 kHz", -12, 12, default_eq["4 kHz"], key="4 kHz"),
+            "8 kHz": st.slider("8 kHz", -12, 12, default_eq["8_kHz"], key="8 kHz"),
+            "16 kHz": st.slider("16 kHz", -12, 12, default_eq["16_kHz"], key="16 kHz"),
         }
         tempo = st.slider("Change Tempo (%)", -10, 10, 0, key="tempo")
         speed = st.slider("Change Speed (%)", -10, 10, 3, key="speed")
