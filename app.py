@@ -74,7 +74,7 @@ if uploaded_files:
                 if start_time is None:
                     start_time = i / sample_rate
             else:
-                if start_time is not None and (i / sample_rate - start_time) >= (min_silence_len / 1500):
+                if start_time is not None and (i / sample_rate - start_time) >= (min_silence_len / 1000):
                     non_silence_chunks.append(audio[start_time * 1000:i / sample_rate * 1000])
                     start_time = None
 
@@ -112,7 +112,7 @@ if uploaded_files:
             # Calculate average dB level and set silence parameters
             avg_dB = 20 * np.log10(np.sqrt(np.mean(np.array(audio.get_array_of_samples()) ** 2)) / 32768)
             auto_silence_thresh = avg_dB - 10
-            min_silence_len = 800
+            min_silence_len = 1500
 
             # Apply enhancements
             try:
