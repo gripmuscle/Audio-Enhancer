@@ -97,7 +97,7 @@ if uploaded_files and all(scripts_or_transcripts):
         start_time = 0
         for word in words:
             if word not in filler_words:
-                duration = len(audio) / len(words)
+                duration = len(audio) / len(words) if words else 0
                 cleaned_audio += audio[start_time:start_time + duration]
             start_time += duration
         return cleaned_audio
@@ -153,7 +153,7 @@ if uploaded_files and all(scripts_or_transcripts):
 
             # Calculate average dB level and set silence parameters
             samples = np.array(audio.get_array_of_samples())
-            avg_dB = 20 * np.log10(np.sqrt(np.mean(samples ** 2)) / 32768)
+            avg_dB = 20 * np.log10(np.sqrt(np.mean(samples ** 2)) / 32768) if samples.size > 0 else -np.inf
             auto_silence_thresh = avg_dB - 10
             min_silence_len = 1000
 
@@ -168,14 +168,15 @@ if uploaded_files and all(scripts_or_transcripts):
 
                 if noise_reduction:
                     samples = np.array(adjusted_audio.get_array_of_samples())
-                    reduced_noise = nr.reduce_noise(y=samples, sr=audio.frame_rate, prop_decrease=noise_reduction / 30.0)
-                    reduced_audio = AudioSegment(
-                        data=reduced_noise.astype(np.int16).tobytes(),
-                        sample_width=adjusted_audio.sample_width,
-                        frame_rate=adjusted_audio.frame_rate,
-                        channels=adjusted_audio.channels
-                    )
-                    adjusted_audio = reduced_audio
+                    if samples.size > 0:
+                        reduced_noise = nr.reduce_noise(y=samples, sr=audio.frame_rate, prop_decrease=noise_reduction / 30.0)
+                        reduced_audio = AudioSegment(
+                            data=reduced_noise.astype(np.int16).tobytes(),
+                            sample_width=adjusted_audio.sample_width,
+                            frame_rate=adjusted_audio.frame_rate,
+                            channels=adjusted_audio.channels
+                        )
+                        adjusted_audio = reduced_audio
 
                 # Use the respective script/transcript for each file
                 script_or_transcript = scripts_or_transcripts[idx]
@@ -185,9 +186,10 @@ if uploaded_files and all(scripts_or_transcripts):
 
                 if is_video:
                     video_clips = []
-                    for i, clip in enumerate(video.iter_frames()):
-                        if i * 1000 // video.fps in trimmed_audio.get_array_of_samples():
-                            video_clips.append(video.subclip(i, i + 1))
+                    for i, frame in enumerate(video.iter_frames()):
+                        # Check if the frame index corresponds to an audio chunk
+                        if i * 1000 // video.fps < len(trimmed_audio):
+                            video_clips.append(video.subclip(i / video.fps, (i + 1) / video.fps))
                     final_video = concatenate_videoclips(video_clips)
                     final_video.set_audio(normalized_audio)
                     output = final_video
