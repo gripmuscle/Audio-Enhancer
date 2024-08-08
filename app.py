@@ -67,8 +67,8 @@ if uploaded_files and all(scripts_or_transcripts):
             "1 kHz": st.slider("1 kHz", -12, 12, default_eq["1 kHz"], key="1 kHz"),
             "2 kHz": st.slider("2 kHz", -12, 12, default_eq["2 kHz"], key="2 kHz"),
             "4 kHz": st.slider("4 kHz", -12, 12, default_eq["4 kHz"], key="4 kHz"),
-            "8 kHz": st.slider("8 kHz", -12, 12, default_eq["8_kHz"], key="8 kHz"),
-            "16 kHz": st.slider("16 kHz", -12, 12, default_eq["16_kHz"], key="16 kHz"),
+            "8 kHz": st.slider("8 kHz", -12, 12, default_eq["8 kHz"], key="8 kHz"),
+            "16 kHz": st.slider("16 kHz", -12, 12, default_eq["16 kHz"], key="16 kHz"),
         }
         tempo = st.slider("Change Tempo (%)", -10, 10, 0, key="tempo")
         speed = st.slider("Change Speed (%)", -10, 10, 3, key="speed")
