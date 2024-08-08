@@ -124,81 +124,74 @@ if uploaded_files and all(scripts_or_transcripts):
     # Handle audio/video processing
     if st.button("Apply Enhancements"):
         for idx, uploaded_file in enumerate(uploaded_files):
-            suffix = os.path.splitext(uploaded_file.name)[1]
-            with tempfile.NamedTemporaryFile(delete=False, suffix=suffix) as temp_file:
-                temp_file.write(uploaded_file.read())
-                file_path = temp_file.name
+            with st.spinner(f"Processing {uploaded_file.name}..."):
+                suffix = os.path.splitext(uploaded_file.name)[1]
+                with tempfile.NamedTemporaryFile(delete=False, suffix=suffix) as temp_file:
+                    temp_file.write(uploaded_file.read())
+                    file_path = temp_file.name
 
-            logger.info(f"Uploaded file saved to {file_path}")
+                logger.info(f"Uploaded file saved to {file_path}")
 
-            # Load audio or video
-            if suffix in [".wav", ".mp3"]:
+                # Load audio or video
                 try:
-                    audio = AudioSegment.from_file(file_path)
-                    is_video = False
+                    if suffix in [".wav", ".mp3"]:
+                        audio = AudioSegment.from_file(file_path)
+                        is_video = False
+                    else:
+                        video = VideoFileClip(file_path)
+                        audio = video.audio
+                        is_video = True
+
+                    # Calculate average dB level and set silence parameters
+                    samples = np.array(audio.get_array_of_samples())
+                    avg_dB = 20 * np.log10(np.sqrt(np.mean(samples ** 2)) / 32768.0) if samples.size > 0 else -np.inf
+                    auto_silence_thresh = avg_dB - 10
+                    min_silence_len = 1000
+
+                    # Apply enhancements
+                    adjusted_audio = audio._spawn(audio.raw_data, overrides={"frame_rate": int(audio.frame_rate * (1 + tempo / 100))})
+                    adjusted_audio = adjusted_audio.set_frame_rate(audio.frame_rate)
+                    adjusted_audio = adjusted_audio.speedup(playback_speed=1 + speed / 100)
+
+                    if compression_threshold:
+                        adjusted_audio = adjusted_audio.compress_dynamic_range(compression_threshold)
+
+                    if noise_reduction:
+                        samples = np.array(adjusted_audio.get_array_of_samples())
+                        if samples.size > 0:
+                            reduced_noise = nr.reduce_noise(y=samples, sr=audio.frame_rate, prop_decrease=noise_reduction / 30.0)
+                            reduced_audio = AudioSegment(
+                                data=reduced_noise.astype(np.int16).tobytes(),
+                                sample_width=adjusted_audio.sample_width,
+                                frame_rate=adjusted_audio.frame_rate,
+                                channels=adjusted_audio.channels
+                            )
+                            adjusted_audio = reduced_audio
+
+                    # Use the respective script/transcript for each file
+                    script_or_transcript = scripts_or_transcripts[idx]
+                    adjusted_audio = remove_filler_words(script_or_transcript, adjusted_audio)
+                    trimmed_audio = remove_silence_and_retakes(adjusted_audio, auto_silence_thresh, min_silence_len, script_or_transcript, mode)
+                    normalized_audio = normalize(trimmed_audio)
+
+                    # Add progress logging
+                    logger.info(f"Enhancements applied to {uploaded_file.name}")
+
+                    if is_video:
+                        video_clips = []
+                        for i, frame in enumerate(video.iter_frames()):
+                            # Check if the frame index corresponds to an audio chunk
+                            if i * 1000 // video.fps < len(trimmed_audio):
+                                video_clips.append(video.subclip(i / video.fps, (i + 1) / video.fps))
+                        final_video = concatenate_videoclips(video_clips)
+                        final_video.set_audio(normalized_audio)
+                        enhanced_outputs.append(final_video)
+                    else:
+                        enhanced_outputs.append(normalized_audio)
+
                 except Exception as e:
-                    st.error(f"Failed to load audio file: {e}")
-                    logger.error(f"Error loading audio file: {e}")
-                    st.stop()
-            else:
-                try:
-                    video = VideoFileClip(file_path)
-                    audio = video.audio
-                    is_video = True
-                except Exception as e:
-                    st.error(f"Failed to load video file: {e}")
-                    logger.error(f"Error loading video file: {e}")
-                    st.stop()
-
-            # Calculate average dB level and set silence parameters
-            try:
-                samples = np.array(audio.get_array_of_samples())
-                avg_dB = 20 * np.log10(np.sqrt(np.mean(samples ** 2)) / 32768.0) if samples.size > 0 else -np.inf
-                auto_silence_thresh = avg_dB - 10
-                min_silence_len = 1000
-
-                # Apply enhancements
-                adjusted_audio = audio._spawn(audio.raw_data, overrides={"frame_rate": int(audio.frame_rate * (1 + tempo / 100))})
-                adjusted_audio = adjusted_audio.set_frame_rate(audio.frame_rate)
-                adjusted_audio = adjusted_audio.speedup(playback_speed=1 + speed / 100)
-
-                if compression_threshold:
-                    adjusted_audio = adjusted_audio.compress_dynamic_range(compression_threshold)
-
-                if noise_reduction:
-                    samples = np.array(adjusted_audio.get_array_of_samples())
-                    if samples.size > 0:
-                        reduced_noise = nr.reduce_noise(y=samples, sr=audio.frame_rate, prop_decrease=noise_reduction / 30.0)
-                        reduced_audio = AudioSegment(
-                            data=reduced_noise.astype(np.int16).tobytes(),
-                            sample_width=adjusted_audio.sample_width,
-                            frame_rate=adjusted_audio.frame_rate,
-                            channels=adjusted_audio.channels
-                        )
-                        adjusted_audio = reduced_audio
-
-                # Use the respective script/transcript for each file
-                script_or_transcript = scripts_or_transcripts[idx]
-                adjusted_audio = remove_filler_words(script_or_transcript, adjusted_audio)
-                trimmed_audio = remove_silence_and_retakes(adjusted_audio, auto_silence_thresh, min_silence_len, script_or_transcript, mode)
-                normalized_audio = normalize(trimmed_audio)
-
-                if is_video:
-                    video_clips = []
-                    for i, frame in enumerate(video.iter_frames()):
-                        # Check if the frame index corresponds to an audio chunk
-                        if i * 1000 // video.fps < len(trimmed_audio):
-                            video_clips.append(video.subclip(i / video.fps, (i + 1) / video.fps))
-                    final_video = concatenate_videoclips(video_clips)
-                    final_video.set_audio(normalized_audio)
-                    output = final_video
-                else:
-                    output = normalized_audio
-
-                enhanced_outputs.append(output)
-            except Exception as e:
-                st.error(f"An error occurred while processing {uploaded_file.name}: {e}")
-                logger.error(f"Error applying enhancements: {e}")
+                    st.error(f"An error occurred while processing {uploaded_file.name}: {e}")
+                    logger.error(f"Error applying enhancements: {e}")
 
         # Handle export of enhanced outputs
         if enhanced_outputs:
