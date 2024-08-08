@@ -39,6 +39,28 @@ if uploaded_files:
     # Ask user for output file name
     output_file_name = st.text_input("Enter the output file name (without extension)", "enhanced_audio")
 
+    # Choose whether to apply settings to all files or separately
+    apply_globally = st.radio("Apply settings to all files?", ("Yes", "No"), index=0)
+
+    def render_settings(idx=0):
+        eq_freqs = {
+            "31.25 Hz": st.slider("31.25 Hz", -12, 12, default_eq["31.25 Hz"], key=f"31.25_Hz_{idx}"),
+            "62.5 Hz": st.slider("62.5 Hz", -12, 12, default_eq["62.5 Hz"], key=f"62.5_Hz_{idx}"),
+            "125 Hz": st.slider("125 Hz", -12, 12, default_eq["125 Hz"], key=f"125_Hz_{idx}"),
+            "250 Hz": st.slider("250 Hz", -12, 12, default_eq["250 Hz"], key=f"250_Hz_{idx}"),
+            "500 Hz": st.slider("500 Hz", -12, 12, default_eq["500 Hz"], key=f"500_Hz_{idx}"),
+            "1 kHz": st.slider("1 kHz", -12, 12, default_eq["1 kHz"], key=f"1_kHz_{idx}"),
+            "2 kHz": st.slider("2 kHz", -12, 12, default_eq["2 kHz"], key=f"2_kHz_{idx}"),
+            "4 kHz": st.slider("4 kHz", -12, 12, default_eq["4 kHz"], key=f"4_kHz_{idx}"),
+            "8 kHz": st.slider("8 kHz", -12, 12, default_eq["8 kHz"], key=f"8_kHz_{idx}"),
+            "16 kHz": st.slider("16 kHz", -12, 12, default_eq["16 kHz"], key=f"16_kHz_{idx}"),
+        }
+        tempo = st.slider("Change Tempo (%)", -10, 10, 0, key=f"tempo_{idx}")
+        speed = st.slider("Change Speed (%)", -10, 10, 3, key=f"speed_{idx}")
+        compression_threshold = st.slider("Compression Threshold (-dB)", -40, 0, -20, key=f"compression_{idx}")
+        noise_reduction = st.slider("Background Noise Reduction (dB)", 0, 30, 10, key=f"noise_reduction_{idx}")
+        return eq_freqs, tempo, speed, compression_threshold, noise_reduction
+
     for idx, uploaded_file in enumerate(uploaded_files):
         suffix = os.path.splitext(uploaded_file.name)[1]
         with tempfile.NamedTemporaryFile(delete=False, suffix=suffix) as temp_file:
@@ -69,31 +91,18 @@ if uploaded_files:
         auto_silence_thresh = avg_dB - 10
         min_silence_len = 800
 
-        st.subheader("Audio Enhancement Settings")
+        st.subheader(f"Audio Enhancement Settings for {uploaded_file.name}")
 
-        st.write("Equalizer Settings:")
-        eq_freqs = {
-            "31.25 Hz": st.slider("31.25 Hz", -12, 12, default_eq["31.25 Hz"], key=f"31.25_Hz_{idx}"),
-            "62.5 Hz": st.slider("62.5 Hz", -12, 12, default_eq["62.5 Hz"], key=f"62.5_Hz_{idx}"),
-            "125 Hz": st.slider("125 Hz", -12, 12, default_eq["125 Hz"], key=f"125_Hz_{idx}"),
-            "250 Hz": st.slider("250 Hz", -12, 12, default_eq["250 Hz"], key=f"250_Hz_{idx}"),
-            "500 Hz": st.slider("500 Hz", -12, 12, default_eq["500 Hz"], key=f"500_Hz_{idx}"),
-            "1 kHz": st.slider("1 kHz", -12, 12, default_eq["1 kHz"], key=f"1_kHz_{idx}"),
-            "2 kHz": st.slider("2 kHz", -12, 12, default_eq["2 kHz"], key=f"2_kHz_{idx}"),
-            "4 kHz": st.slider("4 kHz", -12, 12, default_eq["4 kHz"], key=f"4_kHz_{idx}"),
-            "8 kHz": st.slider("8 kHz", -12, 12, default_eq["8 kHz"], key=f"8_kHz_{idx}"),
-            "16 kHz": st.slider("16 kHz", -12, 12, default_eq["16 kHz"], key=f"16_kHz_{idx}"),
-        }
-
-        tempo = st.slider("Change Tempo (%)", -10, 10, 0, key=f"tempo_{idx}")
-        speed = st.slider("Change Speed (%)", -10, 10, 3, key=f"speed_{idx}")
-        compression_threshold = st.slider("Compression Threshold (-dB)", -40, 0, -20, key=f"compression_{idx}")
-        noise_reduction = st.slider("Background Noise Reduction (dB)", 0, 30, 10, key=f"noise_reduction_{idx}")
+        if apply_globally == "Yes":
+            if idx == 0:
+                eq_freqs, tempo, speed, compression_threshold, noise_reduction = render_settings()
+        else:
+            eq_freqs, tempo, speed, compression_threshold, noise_reduction = render_settings(idx)
 
         st.write(f"Auto-detected Silence Threshold: {auto_silence_thresh:.2f} dB")
         st.write(f"Minimum Silence Length: {min_silence_len} ms")
 
-        if st.button(f"Apply Enhancements", key=f"apply_{idx}"):
+        if st.button(f"Apply Enhancements to {uploaded_file.name}", key=f"apply_{idx}"):
             try:
                 logger.info("Applying enhancements")
 
@@ -107,7 +116,7 @@ if uploaded_files:
 
                 if noise_reduction:
                     samples = np.array(adjusted_audio.get_array_of_samples())
-                    reduced_noise = nr.reduce_noise(y=samples, sr=audio.frame_rate, prop_decrease=noise_reduction/30.0)
+                    reduced_noise = nr.reduce_noise(y=samples, sr=audio.frame_rate, prop_decrease=noise_reduction / 30.0)
                     reduced_audio = AudioSegment(
                         data=reduced_noise.astype(np.int16).tobytes(),
                         sample_width=adjusted_audio.sample_width,
