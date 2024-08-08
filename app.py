@@ -166,11 +166,7 @@ if st.button("Apply Enhancements"):
             # Update progress bar after processing each file
             progress_bar.progress((i + 1) / total_files)
 
-    progress_text.text("Processing complete!")  # Ensure this line is aligned with the for loop
-
-
-
-        progress_text.text("Processing complete!")
+            progress_text.text("Processing complete!")  # Ensure this line is aligned with the for loop
 
         # Handle export of enhanced audios
         if enhanced_audios:
