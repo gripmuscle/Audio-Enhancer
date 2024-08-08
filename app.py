@@ -136,16 +136,11 @@ if uploaded_files and all(scripts_or_transcripts):
                     logger.error(f"Error loading video file: {e}")
                     st.stop()
 
-           # Calculate average dB level and set silence parameters
-    samples = np.array(audio.get_array_of_samples())
-    avg_dB = 20 * np.log10(np.sqrt(np.mean(samples ** 2)) / 32768)
-    auto_silence_thresh = avg_dB - 10
-    min_silence_len = 1000
-except Exception as e:
-    st.error(f"Error calculating average dB: {e}")
-    logger.error(f"Error calculating average dB: {e}")
-    st.stop()
-
+            # Calculate average dB level and set silence parameters
+            samples = np.array(audio.get_array_of_samples())
+            avg_dB = 20 * np.log10(np.sqrt(np.mean(samples ** 2)) / 32768)
+            auto_silence_thresh = avg_dB - 10
+            min_silence_len = 1000
 
             # Apply enhancements
             try:
