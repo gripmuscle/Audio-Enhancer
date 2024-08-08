@@ -8,6 +8,7 @@ import os
 import numpy as np
 import noisereduce as nr
 import zipfile
+from concurrent.futures import ThreadPoolExecutor, as_completed
 
 # Setup logging
 logging.basicConfig(level=logging.INFO)
@@ -34,7 +35,7 @@ uploaded_files = st.file_uploader("Upload your AI-generated audio files (wav, mp
 
 if uploaded_files:
     enhanced_audios = []
-    
+
     # Ask user for output file name
     output_file_name = st.text_input("Enter the output file name (without extension)", "enhanced_audio")
 
@@ -63,13 +64,14 @@ if uploaded_files:
     def remove_silence(audio, silence_thresh, min_silence_len):
         non_silence_chunks = []
         start_time = None
-
-        samples = np.array(audio.get_array_of_samples())
+        samples = np.array(audio.get_array_of_samples(), dtype=np.int16)  # Use a specific data type
         sample_rate = audio.frame_rate
         silence_thresh_samples = 10 ** ((silence_thresh + 90) / 20)
 
-        for i in range(0, len(samples), sample_rate // 10):
-            chunk = samples[i:i + sample_rate // 10]
+        # Process in larger chunks
+        chunk_size = sample_rate // 10
+        for i in range(0, len(samples), chunk_size):
+            chunk = samples[i:i + chunk_size]
             if np.abs(chunk).mean() > silence_thresh_samples:
                 if start_time is None:
                     start_time = i / sample_rate
@@ -91,63 +93,65 @@ if uploaded_files:
     if apply_globally == "Yes":
         eq_freqs, tempo, speed, compression_threshold, noise_reduction = render_settings()
 
+    # Define a function for processing audio
+    def process_audio(uploaded_file, eq_freqs, tempo, speed, compression_threshold, noise_reduction):
+        suffix = os.path.splitext(uploaded_file.name)[1]
+        with tempfile.NamedTemporaryFile(delete=False, suffix=suffix) as temp_file:
+            temp_file.write(uploaded_file.read())
+            audio_path = temp_file.name
+
+        logger.info(f"Uploaded file saved to {audio_path}")
+
+        # Load audio
+        try:
+            audio = AudioSegment.from_file(audio_path)
+        except Exception as e:
+            logger.error(f"Error loading audio file: {e}")
+            return None
+
+        # Precompute average dB level and set silence parameters once
+        avg_dB = 20 * np.log10(np.sqrt(np.mean(np.array(audio.get_array_of_samples(), dtype=np.int16) ** 2)) / 32768)
+        auto_silence_thresh = avg_dB - 10
+        min_silence_len = 800
+
+        # Apply enhancements
+        try:
+            adjusted_audio = audio._spawn(audio.raw_data, overrides={"frame_rate": int(audio.frame_rate * (1 + tempo / 100))})
+            adjusted_audio = adjusted_audio.set_frame_rate(audio.frame_rate)
+            adjusted_audio = adjusted_audio.speedup(playback_speed=1 + speed / 100)
+
+            if compression_threshold:
+                adjusted_audio = adjusted_audio.compress_dynamic_range(compression_threshold)
+
+            if noise_reduction:
+                samples = np.array(adjusted_audio.get_array_of_samples(), dtype=np.int16)  # Use specific data type for efficiency
+                reduced_noise = nr.reduce_noise(y=samples, sr=audio.frame_rate, prop_decrease=noise_reduction / 30.0)
+                reduced_audio = AudioSegment(
+                    data=reduced_noise.astype(np.int16).tobytes(),
+                    sample_width=adjusted_audio.sample_width,
+                    frame_rate=adjusted_audio.frame_rate,
+                    channels=adjusted_audio.channels
+                )
+                adjusted_audio = reduced_audio
+
+            trimmed_audio = remove_silence(adjusted_audio, auto_silence_thresh, min_silence_len)
+            normalized_audio = normalize(trimmed_audio)
+            return normalized_audio
+        except Exception as e:
+            logger.error(f"Error applying enhancements: {e}")
+            return None
+
     # Handle audio processing
     if st.button("Apply Enhancements"):
-        progress_bar = st.progress(0)  # Initialize progress bar
-        total_steps = len(uploaded_files) + 1  # Include finalizing step
-        for i, uploaded_file in enumerate(uploaded_files):
-            suffix = os.path.splitext(uploaded_file.name)[1]
-            with tempfile.NamedTemporaryFile(delete=False, suffix=suffix) as temp_file:
-                temp_file.write(uploaded_file.read())
-                audio_path = temp_file.name
+        with ThreadPoolExecutor() as executor:
+            futures = {executor.submit(process_audio, uploaded_file, eq_freqs if apply_globally == "Yes" else render_settings()): uploaded_file for uploaded_file in uploaded_files}
 
-            logger.info(f"Uploaded file saved to {audio_path}")
-            progress_bar.progress((i + 1) / total_steps)  # Update progress bar
-
-            # Load audio
-            try:
-                audio = AudioSegment.from_file(audio_path)
-            except Exception as e:
-                st.error(f"Failed to load audio file: {e}")
-                logger.error(f"Error loading audio file: {e}")
-                st.stop()
-
-            # Calculate average dB level and set silence parameters
-            avg_dB = 20 * np.log10(np.sqrt(np.mean(np.array(audio.get_array_of_samples()) ** 2)) / 32768)
-            auto_silence_thresh = avg_dB - 10
-            min_silence_len = 1000
-
-            # Apply enhancements
-            try:
-                adjusted_audio = audio._spawn(audio.raw_data, overrides={"frame_rate": int(audio.frame_rate * (1 + tempo / 100))})
-                adjusted_audio = adjusted_audio.set_frame_rate(audio.frame_rate)
-                adjusted_audio = adjusted_audio.speedup(playback_speed=1 + speed / 100)
-
-                if compression_threshold:
-                    adjusted_audio = adjusted_audio.compress_dynamic_range(compression_threshold)
-
-                if noise_reduction:
-                    samples = np.array(adjusted_audio.get_array_of_samples())
-                    reduced_noise = nr.reduce_noise(y=samples, sr=audio.frame_rate, prop_decrease=noise_reduction / 30.0)
-                    reduced_audio = AudioSegment(
-                        data=reduced_noise.astype(np.int16).tobytes(),
-                        sample_width=adjusted_audio.sample_width,
-                        frame_rate=adjusted_audio.frame_rate,
-                        channels=adjusted_audio.channels
-                    )
-                    adjusted_audio = reduced_audio
-
-                trimmed_audio = remove_silence(adjusted_audio, auto_silence_thresh, min_silence_len)
-                normalized_audio = normalize(trimmed_audio)
-                enhanced_audios.append(normalized_audio)
-
-                progress_bar.progress((i + 1) / total_steps)  # Update progress bar after processing each file
-            except Exception as e:
-                st.error(f"An error occurred while processing {uploaded_file.name}: {e}")
-                logger.error(f"Error applying enhancements: {e}")
-
-        # Finalizing progress
-        progress_bar.progress(1.0)  # Complete progress bar after processing all files
+            for future in as_completed(futures):
+                result = future.result()
+                if result:
+                    enhanced_audios.append(result)
+                else:
+                    st.error(f"An error occurred while processing {futures[future].name}")
 
         # Handle export of enhanced audios
         if enhanced_audios:
@@ -155,7 +159,7 @@ if uploaded_files:
             merge_option = st.radio("Do you want to merge all files into one?", ("Yes", "No"), index=0)
             if merge_option == "Yes":
                 # Create a silent audio segment of 1 second
-                silence_segment = AudioSegment.silent(duration=500)  # 1000 ms = 1 second
+                silence_segment = AudioSegment.silent(duration=500)  # 500 ms = 0.5 seconds
                 final_audio = AudioSegment.empty()
 
                 # Add each audio and a silence segment in between
