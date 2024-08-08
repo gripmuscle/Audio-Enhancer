@@ -10,6 +10,7 @@ import noisereduce as nr
 import zipfile
 from moviepy.editor import VideoFileClip, concatenate_videoclips
 import re
+import speech_recognition as sr  # Importing speech recognition library
 
 # Setup logging
 logging.basicConfig(level=logging.INFO)
@@ -76,6 +77,20 @@ if uploaded_files and all(scripts_or_transcripts):
         noise_reduction = st.slider("Background Noise Reduction (dB)", 0, 30, 10, key="noise_reduction")
         return eq_freqs, tempo, speed, compression_threshold, noise_reduction
 
+    def recognize_speech(audio_chunk):
+        recognizer = sr.Recognizer()
+        with tempfile.NamedTemporaryFile(delete=False, suffix=".wav") as temp_audio_file:
+            audio_chunk.export(temp_audio_file.name, format="wav")
+            with sr.AudioFile(temp_audio_file.name) as source:
+                audio = recognizer.record(source)
+                try:
+                    return recognizer.recognize_google(audio)
+                except sr.UnknownValueError:
+                    return ""
+                except sr.RequestError as e:
+                    logger.error(f"Could not request results from Google Speech Recognition service; {e}")
+                    return ""
+
     def remove_filler_words(transcript, audio, filler_words=["uhm", "uh", "like"]):
         words = transcript.split()
         cleaned_audio = AudioSegment.silent(duration=0)
@@ -92,7 +107,7 @@ if uploaded_files and all(scripts_or_transcripts):
         chunks = silence.split_on_silence(audio, silence_thresh=silence_thresh, min_silence_len=min_silence_len)
         
         for chunk in chunks:
-            chunk_text = recognize_speech(chunk)  # Dummy function, replace with actual speech-to-text
+            chunk_text = recognize_speech(chunk)  # Use the speech-to-text function
             if mode == "Script-based":
                 if "..." in chunk_text:
                     segments.append(chunk)
