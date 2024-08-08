@@ -141,23 +141,33 @@ if uploaded_files:
                 st.error(f"An error occurred while processing {uploaded_file.name}: {e}")
                 logger.error(f"Error applying enhancements: {e}")
 
-        # Handle export of enhanced audios
-        if enhanced_audios:
-            buffer = BytesIO()
-            merge_option = st.radio("Do you want to merge all files into one?", ("Yes", "No"), index=0)
-            if merge_option == "Yes":
-                final_audio = sum(enhanced_audios)
-                final_audio.export(buffer, format="wav")
-                buffer.seek(0)
-                st.subheader("Merged Enhanced Audio")
-                st.audio(buffer, format="audio/wav")
-                st.download_button(label="Download Merged Enhanced Audio", data=buffer, file_name=f"{output_file_name}.wav")
-            else:
-                with zipfile.ZipFile(buffer, "w") as zip_file:
-                    for i, audio in enumerate(enhanced_audios):
-                        audio_buffer = BytesIO()
-                        audio.export(audio_buffer, format="wav")
-                        audio_buffer.seek(0)
-                        zip_file.writestr(f"{output_file_name}_{i + 1}.wav", audio_buffer.read())
-                buffer.seek(0)
-                st.download_button(label="Download Enhanced Audio Files (ZIP)", data=buffer, file_name=f"{output_file_name}.zip")
+       # Handle export of enhanced audios
+if enhanced_audios:
+    buffer = BytesIO()
+    merge_option = st.radio("Do you want to merge all files into one?", ("Yes", "No"), index=0)
+    if merge_option == "Yes":
+        # Create a silent audio segment of 1 second
+        silence_segment = AudioSegment.silent(duration=1000)  # 1000 ms = 1 second
+        final_audio = AudioSegment.empty()
+
+        # Add each audio and a silence segment in between
+        for audio in enhanced_audios:
+            final_audio += audio + silence_segment
+
+        # Remove the last silence added
+        final_audio = final_audio[:-len(silence_segment)]
+
+        final_audio.export(buffer, format="wav")
+        buffer.seek(0)
+        st.subheader("Merged Enhanced Audio")
+        st.audio(buffer, format="audio/wav")
+        st.download_button(label="Download Merged Enhanced Audio", data=buffer, file_name=f"{output_file_name}.wav")
+    else:
+        with zipfile.ZipFile(buffer, "w") as zip_file:
+            for i, audio in enumerate(enhanced_audios):
+                audio_buffer = BytesIO()
+                audio.export(audio_buffer, format="wav")
+                audio_buffer.seek(0)
+                zip_file.writestr(f"{output_file_name}_{i + 1}.wav", audio_buffer.read())
+        buffer.seek(0)
+        st.download_button(label="Download Enhanced Audio Files (ZIP)", data=buffer, file_name=f"{output_file_name}.zip")
