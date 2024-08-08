@@ -74,7 +74,7 @@ if uploaded_files:
                 if start_time is None:
                     start_time = i / sample_rate
             else:
-                if start_time is not None and (i / sample_rate - start_time) >= (min_silence_len / 1000):
+                if start_time is not None and (i / sample_rate - start_time) >= (min_silence_len / 1500):
                     non_silence_chunks.append(audio[start_time * 1000:i / sample_rate * 1000])
                     start_time = None
 
