@@ -64,10 +64,9 @@ def process_audio(uploaded_file, eq_freqs, tempo, speed, compression_threshold, 
         logger.error(f"Error loading audio file: {e}")
         return None
 
-    # Precompute average dB level and set silence parameters once
+    # Precompute average dB level
     avg_dB = 20 * np.log10(np.sqrt(np.mean(np.array(audio.get_array_of_samples(), dtype=np.int16) ** 2)) / 32768)
     auto_silence_thresh = avg_dB - 10
-    min_silence_len = 800
 
     # Apply enhancements
     try:
@@ -89,15 +88,16 @@ def process_audio(uploaded_file, eq_freqs, tempo, speed, compression_threshold, 
             )
             adjusted_audio = reduced_audio
 
-        trimmed_audio = remove_silence(adjusted_audio, auto_silence_thresh, min_silence_len)
+        # Remove silence
+        trimmed_audio = remove_silence(adjusted_audio, auto_silence_thresh)
         normalized_audio = normalize(trimmed_audio)
         return normalized_audio
     except Exception as e:
         logger.error(f"Error applying enhancements: {e}")
         return None
 
-def remove_silence(audio, silence_thresh, min_silence_len):
-    return audio[silence_thresh: silence_thresh + min_silence_len]
+def remove_silence(audio, silence_thresh):
+    return audio[~audio.dBFS < silence_thresh]
 
 st.title('AI Voice Enhancement Tool')
 
@@ -177,11 +177,9 @@ if uploaded_files:
                         audio.export(temp_file.name, format="wav")
                         zf.write(temp_file.name, arcname=name + ".wav")
                         os.remove(temp_file.name)
-                
                 zip_buffer.seek(0)
                 st.subheader("Download Enhanced Audios")
-                st.download_button("Download All Enhanced Audios", zip_buffer, file_name=f"{output_file_name}.zip")
+                st.download_button("Download ZIP File", zip_buffer, file_name=f"{output_file_name}.zip")
+        else:
+            st.warning("No enhanced audios to display.")
 
-    st.write("Uploaded Files:")
-    for file in uploaded_files:
-        st.write(f"- {file.name}")
