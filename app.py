@@ -42,53 +42,8 @@ if uploaded_files:
     # Choose whether to apply settings to all files or separately
     apply_globally = st.radio("Apply settings to all files?", ("Yes", "No"), index=0)
 
-    def render_settings():
-        eq_freqs = {
-            "31.25 Hz": st.slider("31.25 Hz", -12, 12, default_eq["31.25 Hz"], key="31.25_Hz"),
-            "62.5 Hz": st.slider("62.5 Hz", -12, 12, default_eq["62.5 Hz"], key="62.5_Hz"),
-            "125 Hz": st.slider("125 Hz", -12, 12, default_eq["125 Hz"], key="125_Hz"),
-            "250 Hz": st.slider("250 Hz", -12, 12, default_eq["250 Hz"], key="250_Hz"),
-            "500 Hz": st.slider("500 Hz", -12, 12, default_eq["500 Hz"], key="500_Hz"),
-            "1 kHz": st.slider("1 kHz", -12, 12, default_eq["1 kHz"], key="1_kHz"),
-            "2 kHz": st.slider("2 kHz", -12, 12, default_eq["2 kHz"], key="2_kHz"),
-            "4 kHz": st.slider("4 kHz", -12, 12, default_eq["4 kHz"], key="4_kHz"),
-            "8 kHz": st.slider("8 kHz", -12, 12, default_eq["8 kHz"], key="8_kHz"),
-            "16 kHz": st.slider("16 kHz", -12, 12, default_eq["16 kHz"], key="16_kHz"),
-        }
-        tempo = st.slider("Change Tempo (%)", -10, 10, 0, key="tempo")
-        speed = st.slider("Change Speed (%)", -10, 10, 3, key="speed")
-        compression_threshold = st.slider("Compression Threshold (-dB)", -40, 0, -20, key="compression")
-        noise_reduction = st.slider("Background Noise Reduction (dB)", 0, 30, 10, key="noise_reduction")
-        return eq_freqs, tempo, speed, compression_threshold, noise_reduction
-
-    def remove_silence(audio, silence_thresh, min_silence_len):
-        non_silence_chunks = []
-        start_time = None
-        samples = np.array(audio.get_array_of_samples(), dtype=np.int16)  # Use a specific data type
-        sample_rate = audio.frame_rate
-        silence_thresh_samples = 10 ** ((silence_thresh + 90) / 20)
-
-        # Process in larger chunks
-        chunk_size = sample_rate // 10
-        for i in range(0, len(samples), chunk_size):
-            chunk = samples[i:i + chunk_size]
-            if np.abs(chunk).mean() > silence_thresh_samples:
-                if start_time is None:
-                    start_time = i / sample_rate
-            else:
-                if start_time is not None and (i / sample_rate - start_time) >= (min_silence_len / 1000):
-                    non_silence_chunks.append(audio[start_time * 1000:i / sample_rate * 1000])
-                    start_time = None
-
-        if start_time is not None:
-            non_silence_chunks.append(audio[start_time * 1000:])
-
-        if non_silence_chunks:
-            trimmed_audio = sum(non_silence_chunks)
-        else:
-            return audio
-
-        return trimmed_audio
+    # Render settings sliders
+    eq_freqs, tempo, speed, compression_threshold, noise_reduction = None, None, None, None, None
 
     if apply_globally == "Yes":
         eq_freqs, tempo, speed, compression_threshold, noise_reduction = render_settings()
@@ -141,7 +96,25 @@ if uploaded_files:
             logger.error(f"Error applying enhancements: {e}")
             return None
 
-    # Handle audio processing
+    def render_settings():
+        eq_freqs = {
+            "31.25 Hz": st.slider("31.25 Hz", -12, 12, default_eq["31.25 Hz"], key="31.25_Hz"),
+            "62.5 Hz": st.slider("62.5 Hz", -12, 12, default_eq["62.5 Hz"], key="62.5_Hz"),
+            "125 Hz": st.slider("125 Hz", -12, 12, default_eq["125 Hz"], key="125_Hz"),
+            "250 Hz": st.slider("250 Hz", -12, 12, default_eq["250 Hz"], key="250_Hz"),
+            "500 Hz": st.slider("500 Hz", -12, 12, default_eq["500 Hz"], key="500_Hz"),
+            "1 kHz": st.slider("1 kHz", -12, 12, default_eq["1 kHz"], key="1_kHz"),
+            "2 kHz": st.slider("2 kHz", -12, 12, default_eq["2 kHz"], key="2_kHz"),
+            "4 kHz": st.slider("4 kHz", -12, 12, default_eq["4 kHz"], key="4_kHz"),
+            "8 kHz": st.slider("8 kHz", -12, 12, default_eq["8 kHz"], key="8_kHz"),
+            "16 kHz": st.slider("16 kHz", -12, 12, default_eq["16 kHz"], key="16_kHz"),
+        }
+        tempo = st.slider("Change Tempo (%)", -10, 10, 0, key="tempo")
+        speed = st.slider("Change Speed (%)", -10, 10, 3, key="speed")
+        compression_threshold = st.slider("Compression Threshold (-dB)", -40, 0, -20, key="compression")
+        noise_reduction = st.slider("Background Noise Reduction (dB)", 0, 30, 10, key="noise_reduction")
+        return eq_freqs, tempo, speed, compression_threshold, noise_reduction
+
     if st.button("Apply Enhancements"):
         with ThreadPoolExecutor() as executor:
             futures = {
