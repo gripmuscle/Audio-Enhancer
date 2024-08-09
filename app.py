@@ -9,6 +9,7 @@ import numpy as np
 import noisereduce as nr
 import zipfile
 from concurrent.futures import ThreadPoolExecutor, as_completed
+from datetime import datetime
 
 # Setup logging
 logging.basicConfig(level=logging.INFO)
@@ -34,6 +35,35 @@ st.title('AI Voice Enhancement Tool')
 uploaded_files = st.file_uploader("Upload your AI-generated audio files (wav, mp3 format)", type=["wav", "mp3"], accept_multiple_files=True)
 
 if uploaded_files:
+    file_info = []
+    for uploaded_file in uploaded_files:
+        # Temporary file to extract metadata
+        with tempfile.NamedTemporaryFile(delete=False, suffix=os.path.splitext(uploaded_file.name)[1]) as temp_file:
+            temp_file.write(uploaded_file.read())
+            file_info.append({
+                'file': uploaded_file,
+                'path': temp_file.name,
+                'name': uploaded_file.name,
+                'upload_time': datetime.now()
+            })
+    
+    # User options for sorting
+    sort_option = st.radio("Sort files by:", ("Date Created", "Date Uploaded", "Manual Index"))
+
+    if sort_option == "Date Created":
+        file_info.sort(key=lambda x: os.path.getctime(x['path']))
+    elif sort_option == "Date Uploaded":
+        file_info.sort(key=lambda x: x['upload_time'])
+    elif sort_option == "Manual Index":
+        # Allow user to manually set indexes
+        st.write("Assign index numbers:")
+        indexes = []
+        for i, file_data in enumerate(file_info):
+            index = st.number_input(f"Index for {file_data['name']}", min_value=1, max_value=len(file_info), value=i+1, key=f"index_{i}")
+            indexes.append((index, file_data))
+        indexes.sort(key=lambda x: x[0])
+        file_info = [file_data for _, file_data in indexes]
+
     enhanced_audios = []
 
     # Ask user for output file name
@@ -90,17 +120,11 @@ if uploaded_files:
 
         return trimmed_audio
 
-    if apply_globally == "Yes":
-        eq_freqs, tempo, speed, compression_threshold, noise_reduction = render_settings()
-
     # Define a function for processing audio
-    def process_audio(uploaded_file, eq_freqs, tempo, speed, compression_threshold, noise_reduction):
+    def process_audio(file_data, eq_freqs, tempo, speed, compression_threshold, noise_reduction):
+        uploaded_file = file_data['file']
         suffix = os.path.splitext(uploaded_file.name)[1]
-        with tempfile.NamedTemporaryFile(delete=False, suffix=suffix) as temp_file:
-            temp_file.write(uploaded_file.read())
-            audio_path = temp_file.name
-
-        logger.info(f"Uploaded file saved to {audio_path}")
+        audio_path = file_data['path']
 
         # Load audio
         try:
@@ -145,53 +169,38 @@ if uploaded_files:
     if st.button("Apply Enhancements"):
         with ThreadPoolExecutor() as executor:
             futures = {
-                executor.submit(process_audio, uploaded_file,
+                executor.submit(process_audio, file_data,
                                 eq_freqs if apply_globally == "Yes" else default_eq,
                                 tempo if apply_globally == "Yes" else 0,
                                 speed if apply_globally == "Yes" else 3,
                                 compression_threshold if apply_globally == "Yes" else None,
                                 noise_reduction if apply_globally == "Yes" else 0
-                ): uploaded_file for uploaded_file in uploaded_files
+                ): file_data for file_data in file_info
             }
 
             for future in as_completed(futures):
-                uploaded_file = futures[future]  # Reference to the uploaded file
+                file_data = futures[future]
                 try:
                     result = future.result()
                     if result:
                         enhanced_audios.append(result)
-                    else:
-                        st.error(f"An error occurred while processing {uploaded_file.name}")
                 except Exception as e:
-                    logger.error(f"Exception raised during processing of {uploaded_file.name}: {e}")
-                    st.error(f"An unexpected error occurred: {e}")
+                    logger.error(f"Error processing file {file_data['name']}: {e}")
 
-        # Handle export of enhanced audios
-        if enhanced_audios:
             buffer = BytesIO()
-            merge_option = st.radio("Do you want to merge all files into one?", ("Yes", "No"), index=0)
-            if merge_option == "Yes":
-                silence_segment = AudioSegment.silent(duration=500)  # 500 ms = 0.5 seconds
-                final_audio = AudioSegment.empty()
+            with zipfile.ZipFile(buffer, "w") as zf:
+                if st.radio("Merge files into one?", ("Yes", "No"), index=0) == "Yes":
+                    merged_audio = sum(enhanced_audios)
+                    with tempfile.NamedTemporaryFile(delete=False, suffix=".wav") as temp_file:
+                        merged_audio.export(temp_file.name, format="wav")
+                        zf.write(temp_file.name, f"{output_file_name}.wav")
+                else:
+                    for idx, audio in enumerate(enhanced_audios):
+                        with tempfile.NamedTemporaryFile(delete=False, suffix=".wav") as temp_file:
+                            audio.export(temp_file.name, format="wav")
+                            zf.write(temp_file.name, f"{output_file_name}_{idx + 1}.wav")
 
-                # Add each audio and a silence segment in between
-                for audio in enhanced_audios:
-                    final_audio += audio + silence_segment
+            buffer.seek(0)
+            st.download_button(label="Download Enhanced Audio Files", data=buffer, file_name=f"{output_file_name}.zip", mime="application/zip")
 
-                # Remove the last silence added
-                final_audio = final_audio[:-len(silence_segment)]
-
-                final_audio.export(buffer, format="wav")
-                buffer.seek(0)
-                st.subheader("Merged Enhanced Audio")
-                st.audio(buffer, format="audio/wav")
-                st.download_button(label="Download Merged Enhanced Audio", data=buffer, file_name=f"{output_file_name}.wav")
-            else:
-                with zipfile.ZipFile(buffer, "w") as zip_file:
-                    for i, audio in enumerate(enhanced_audios):
-                        audio_buffer = BytesIO()
-                        audio.export(audio_buffer, format="wav")
-                        audio_buffer.seek(0)
-                        zip_file.writestr(f"{output_file_name}_{i + 1}.wav", audio_buffer.read())
-                buffer.seek(0)
-                st.download_button(label="Download Enhanced Audio Files (ZIP)", data=buffer, file_name=f"{output_file_name}.zip")
+# Note: Don't forget to delete temporary files after processing to avoid cluttering the filesystem.
