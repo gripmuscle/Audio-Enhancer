@@ -96,8 +96,15 @@ def process_audio(uploaded_file, eq_freqs, tempo, speed, compression_threshold, 
         logger.error(f"Error applying enhancements: {e}")
         return None
 
-def remove_silence(audio, silence_thresh):
-    return audio[~audio.dBFS < silence_thresh]
+def remove_silence(audio, silence_thresh_dB):
+    non_silent_chunks = []
+    for chunk in audio:
+        if chunk.dBFS > silence_thresh_dB:
+            non_silent_chunks.append(chunk)
+    if non_silent_chunks:
+        return sum(non_silent_chunks)
+    else:
+        return audio
 
 st.title('AI Voice Enhancement Tool')
 
@@ -173,13 +180,13 @@ if uploaded_files:
                 zip_buffer = BytesIO()
                 with zipfile.ZipFile(zip_buffer, "w") as zf:
                     for audio, name in enhanced_audios:
-                        temp_file = tempfile.NamedTemporaryFile(delete=False, suffix=".wav")
-                        audio.export(temp_file.name, format="wav")
-                        zf.write(temp_file.name, arcname=name + ".wav")
-                        os.remove(temp_file.name)
+                        with tempfile.NamedTemporaryFile(delete=False, suffix=".wav") as temp_file:
+                            audio.export(temp_file.name, format="wav")
+                            zf.write(temp_file.name, arcname=name)
+
+                            os.remove(temp_file.name)
                 zip_buffer.seek(0)
                 st.subheader("Download Enhanced Audios")
                 st.download_button("Download ZIP File", zip_buffer, file_name=f"{output_file_name}.zip")
         else:
             st.warning("No enhanced audios to display.")
-
