@@ -167,6 +167,8 @@ if uploaded_files:
 
     # Handle audio processing
     if st.button("Apply Enhancements"):
+        eq_freqs, tempo, speed, compression_threshold, noise_reduction = render_settings()
+
         with ThreadPoolExecutor() as executor:
             futures = {
                 executor.submit(process_audio, file_data,
